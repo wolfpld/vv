@@ -32,11 +32,22 @@ CPMAddPackage(
     DOWNLOAD_ONLY TRUE
 )
 
+CPMAddPackage(
+    NAME base64
+    GITHUB_REPOSITORY aklomp/base64
+    GIT_TAG v0.5.2
+    OPTIONS
+        "BASE64_BUILD_CLI OFF"
+        "BASE64_WITH_OpenMP OFF"
+    EXCLUDE_FROM_ALL TRUE
+)
+
 pkg_check_modules(HEIF REQUIRED libheif)
 pkg_check_modules(JPEG REQUIRED libjpeg)
 pkg_check_modules(JXL REQUIRED libjxl libjxl_threads)
 pkg_check_modules(PNG REQUIRED libpng)
 pkg_check_modules(WEBP REQUIRED libwebp)
+pkg_check_modules(ZLIB REQUIRED zlib)
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_CURRENT_LIST_DIR}/src)
 add_compile_definitions(DISABLE_CALLSTACK)
@@ -78,6 +89,7 @@ set(MCOREIMAGE_SRC
     src/image/JxlLoader.cpp
     src/image/PngLoader.cpp
     src/image/PvrLoader.cpp
+    src/image/StbImageLoader.cpp
     src/image/WebpLoader.cpp
 )
 
@@ -97,12 +109,14 @@ target_include_directories(mcoreimage PRIVATE
     ${JXL_INCLUDE_DIRS}
     ${PNG_INCLUDE_DIRS}
     ${WEBP_INCLUDE_DIRS}
+    ${stb_SOURCE_DIR}
 )
 
 # vv
 
 set(VV_SRC
     src/tools/vv/vv.cpp
+    src/tools/vv/Terminal.cpp
 )
 
 add_executable(vv ${VV_SRC})
@@ -110,4 +124,6 @@ target_link_libraries(vv PRIVATE
     mcoreutil
     mcoreimage
     Tracy::TracyClient
+    base64
+    ${ZLIB_LIBRARIES}
 )

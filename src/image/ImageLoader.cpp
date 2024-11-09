@@ -8,6 +8,7 @@
 #include "JxlLoader.hpp"
 #include "PngLoader.hpp"
 #include "PvrLoader.hpp"
+#include "StbImageLoader.hpp"
 #include "WebpLoader.hpp"
 #include "util/Bitmap.hpp"
 #include "util/FileWrapper.hpp"
@@ -51,6 +52,7 @@ Bitmap* LoadImage( const char* filename )
     if( auto img = LoadImage<HeifLoader>( file ); img ) return img;
     if( auto img = LoadImage<PvrLoader>( file ); img ) return img;
     if( auto img = LoadImage<DdsLoader>( file ); img ) return img;
+    if( auto img = LoadImage<StbImageLoader>( file ); img ) return img;
 
     mclog( LogLevel::Error, "Failed to load image %s", path.c_str() );
     return nullptr;
