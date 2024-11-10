@@ -42,10 +42,13 @@ CPMAddPackage(
     EXCLUDE_FROM_ALL TRUE
 )
 
+pkg_check_modules(EXR REQUIRED OpenEXR)
 pkg_check_modules(HEIF REQUIRED libheif)
 pkg_check_modules(JPEG REQUIRED libjpeg)
 pkg_check_modules(JXL REQUIRED libjxl libjxl_threads)
 pkg_check_modules(PNG REQUIRED libpng)
+pkg_check_modules(RAW REQUIRED libraw)
+pkg_check_modules(TIFF REQUIRED libtiff-4)
 pkg_check_modules(WEBP REQUIRED libwebp)
 pkg_check_modules(ZLIB REQUIRED zlib)
 
@@ -67,6 +70,7 @@ add_custom_target(git-ref
 set(MCOREUTIL_SRC
     src/util/Bitmap.cpp
     src/util/Callstack.cpp
+    src/util/FileBuffer.cpp
     src/util/Home.cpp
     src/util/Logs.cpp
     src/util/stb_image_resize_impl.cpp
@@ -83,13 +87,16 @@ target_include_directories(mcoreutil PRIVATE ${stb_SOURCE_DIR})
 set(MCOREIMAGE_SRC
     src/image/bcdec.c
     src/image/DdsLoader.cpp
+    src/image/ExrLoader.cpp
     src/image/HeifLoader.cpp
     src/image/ImageLoader.cpp
     src/image/JpgLoader.cpp
     src/image/JxlLoader.cpp
     src/image/PngLoader.cpp
     src/image/PvrLoader.cpp
+    src/image/RawLoader.cpp
     src/image/StbImageLoader.cpp
+    src/image/TiffLoader.cpp
     src/image/WebpLoader.cpp
 )
 
@@ -97,17 +104,23 @@ add_library(mcoreimage ${MCOREIMAGE_SRC})
 target_link_libraries(mcoreimage PRIVATE
     mcoreutil
     Tracy::TracyClient
+    ${EXR_LIBRARIES}
     ${HEIF_LIBRARIES}
     ${JPEG_LIBRARIES}
     ${JXL_LIBRARIES}
     ${PNG_LIBRARIES}
+    ${RAW_LIBRARIES}
+    ${TIFF_LIBRARIES}
     ${WEBP_LIBRARIES}
 )
 target_include_directories(mcoreimage PRIVATE
+    ${EXR_INCLUDE_DIRS}
     ${HEIF_INCLUDE_DIRS}
     ${JPEG_INCLUDE_DIRS}
     ${JXL_INCLUDE_DIRS}
     ${PNG_INCLUDE_DIRS}
+    ${RAW_INCLUDE_DIRS}
+    ${TIFF_INCLUDE_DIRS}
     ${WEBP_INCLUDE_DIRS}
     ${stb_SOURCE_DIR}
 )
