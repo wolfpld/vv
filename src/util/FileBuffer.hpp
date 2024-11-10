@@ -21,6 +21,6 @@ public:
     [[nodiscard]] size_t size() const { return m_size; }
 
 private:
-    char* m_buffer;
+    const char* m_buffer;
     size_t m_size;
 };

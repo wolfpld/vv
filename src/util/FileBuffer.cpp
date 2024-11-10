@@ -1,4 +1,5 @@
 #include <format>
+#include <sys/mman.h>
 
 #include "FileBuffer.hpp"
 #include "FileWrapper.hpp"
@@ -16,14 +17,13 @@ FileBuffer::FileBuffer( const char* fn )
         throw FileException( std::format( "Failed to open file: {}", fn ) );
     }
 
-    mclog( LogLevel::Debug, "Loading file: %s", fn );
+    mclog( LogLevel::Debug, "Buffering file: %s", fn );
 
     fseek( file, 0, SEEK_END );
     m_size = ftell( file );
     fseek( file, 0, SEEK_SET );
 
-    m_buffer = new char[m_size];
-    file.Read( m_buffer, m_size );
+    m_buffer = (const char*)mmap( nullptr, m_size, PROT_READ, MAP_SHARED, fileno( file ), 0 );
 }
 
 FileBuffer::FileBuffer( FILE* file )
@@ -34,11 +34,10 @@ FileBuffer::FileBuffer( FILE* file )
     m_size = ftell( file );
     fseek( file, 0, SEEK_SET );
 
-    m_buffer = new char[m_size];
-    fread( m_buffer, 1, m_size, file );
+    m_buffer = (const char*)mmap( nullptr, m_size, PROT_READ, MAP_SHARED, fileno( file ), 0 );
 }
 
 FileBuffer::~FileBuffer()
 {
-    delete[] m_buffer;
+    if( m_buffer ) munmap( (void*)m_buffer, m_size );
 }
