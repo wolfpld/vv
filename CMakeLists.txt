@@ -60,11 +60,6 @@ if(TRACY_ENABLE)
     add_compile_options(-g -O3 -fno-omit-frame-pointer)
 endif()
 
-add_custom_target(git-ref
-    COMMAND python3 ${CMAKE_CURRENT_LIST_DIR}/cmake/git-ref.py
-    BYPRODUCTS GitRef.hpp
-)
-
 # mcoreutil
 
 set(MCOREUTIL_SRC
