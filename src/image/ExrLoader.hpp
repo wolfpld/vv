@@ -2,13 +2,15 @@
 
 #include <memory>
 
-#include <ImfRgbaFile.h>
+#include <OpenEXRConfig.h>
 
 #include "util/FileWrapper.hpp"
 #include "util/NoCopy.hpp"
 
 class Bitmap;
 class ExrStream;
+
+namespace OPENEXR_IMF_INTERNAL_NAMESPACE { class RgbaInputFile; }
 
 class ExrLoader
 {
@@ -23,7 +25,7 @@ public:
 
 private:
     std::unique_ptr<ExrStream> m_stream;
-    std::unique_ptr<Imf::RgbaInputFile> m_exr;
+    std::unique_ptr<OPENEXR_IMF_INTERNAL_NAMESPACE::RgbaInputFile> m_exr;
 
     bool m_valid;
 };
