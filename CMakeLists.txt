@@ -48,6 +48,7 @@ pkg_check_modules(JPEG REQUIRED libjpeg)
 pkg_check_modules(JXL REQUIRED libjxl libjxl_threads)
 pkg_check_modules(PNG REQUIRED libpng)
 pkg_check_modules(RAW REQUIRED libraw)
+pkg_check_modules(SIXEL REQUIRED libsixel)
 pkg_check_modules(TIFF REQUIRED libtiff-4)
 pkg_check_modules(WEBP REQUIRED libwebp)
 pkg_check_modules(ZLIB REQUIRED zlib)
@@ -133,5 +134,6 @@ target_link_libraries(vv PRIVATE
     mcoreimage
     Tracy::TracyClient
     base64
+    ${SIXEL_LIBRARIES}
     ${ZLIB_LIBRARIES}
 )

@@ -3,6 +3,7 @@
 #include <getopt.h>
 #include <memory>
 #include <thread>
+#include <sixel.h>
 #include <stdio.h>
 #include <sys/ioctl.h>
 #include <vector>
@@ -21,6 +22,7 @@ void PrintHelp()
     printf( "Usage: vv [options] <image>\n" );
     printf( "Options:\n" );
     printf( "  -b, --block                  Use text-only block mode\n" );
+    printf( "  -6, --sixel                  Use sixel graphics mode\n" );
     printf( "  -s, --scale                  Try to scale up image to 2x\n" );
     printf( "  -f, --fit                    Fit image to terminal size\n" );
     printf( "  --help                       Print this help\n" );
@@ -63,14 +65,22 @@ int main( int argc, char** argv )
         { "block", no_argument, nullptr, 'b' },
         { "scale", no_argument, nullptr, 's' },
         { "fit", no_argument, nullptr, 'f' },
+        { "sixel", no_argument, nullptr, '6' },
         { "help", no_argument, nullptr, OptHelp },
     };
 
-    bool blockMode = false;
+    enum class GfxMode
+    {
+        Kitty,
+        Sixel,
+        Block
+    };
+
+    GfxMode gfxMode = GfxMode::Kitty;
     ScaleMode scale = ScaleMode::None;
 
     int opt;
-    while( ( opt = getopt_long( argc, argv, "debsf", longOptions, nullptr ) ) != -1 )
+    while( ( opt = getopt_long( argc, argv, "debsf6", longOptions, nullptr ) ) != -1 )
     {
         switch (opt)
         {
@@ -81,7 +91,7 @@ int main( int argc, char** argv )
             ShowExternalCallstacks( true );
             break;
         case 'b':
-            blockMode = true;
+            gfxMode = GfxMode::Block;
             break;
         case 's':
             scale = ScaleMode::Scale2x;
@@ -89,11 +99,15 @@ int main( int argc, char** argv )
         case 'f':
             scale = ScaleMode::Fit;
             break;
+        case '6':
+            gfxMode = GfxMode::Sixel;
+            break;
+        default:
+            printf( "\n" );
+            [[fallthrough]];
         case OptHelp:
             PrintHelp();
             return 0;
-        default:
-            break;
         }
     }
     if (optind == argc)
@@ -116,12 +130,12 @@ int main( int argc, char** argv )
     mclog( LogLevel::Info, "Terminal size: %dx%d", ws.ws_col, ws.ws_row );
 
     int cw, ch;
-    if( !blockMode )
+    if( gfxMode != GfxMode::Block )
     {
         if( !OpenTerminal() )
         {
             mclog( LogLevel::Error, "Failed to open terminal" );
-            blockMode = true;
+            gfxMode = GfxMode::Block;
         }
         else
         {
@@ -129,17 +143,44 @@ int main( int argc, char** argv )
             if( sscanf( charSizeResp.c_str(), "\033[6;%d;%dt", &ch, &cw ) != 2 )
             {
                 mclog( LogLevel::Warning, "Failed to query terminal character size" );
-                blockMode = true;
+                gfxMode = GfxMode::Block;
             }
             else
             {
                 mclog( LogLevel::Info, "Terminal char size: %dx%d", cw, ch );
 
-                const auto kittyQuery = QueryTerminal( "\033_Gi=1,s=1,v=1,a=q,t=d,f=24;AAAA\033\\\033[c" );
-                if( !kittyQuery.starts_with( "\033_Gi=1;OK\033\\" ) )
+                const auto gfxQuery = QueryTerminal( "\033_Gi=1,s=1,v=1,a=q,t=d,f=24;AAAA\033\\\033[c" );
+                if( !gfxQuery.starts_with( "\033_Gi=1;OK\033\\" ) )
                 {
-                    mclog( LogLevel::Warning, "Terminal does not support kitty graphics protocol" );
-                    blockMode = true;
+                    mclog( LogLevel::Info, "Terminal does not support kitty graphics protocol" );
+
+                    // See https://invisible-island.net/xterm/ctlseqs/ctlseqs.pdf, page 12
+                    if( (
+                          (
+                            gfxQuery.starts_with( "\033[?12;" ) ||
+                            gfxQuery.starts_with( "\033[?62;" ) ||
+                            gfxQuery.starts_with( "\033[?63;" ) ||
+                            gfxQuery.starts_with( "\033[?64;" ) ||
+                            gfxQuery.starts_with( "\033[?65;" )
+                          ) && (
+                            gfxQuery.find( ";4;" ) != std::string::npos ||
+                            gfxQuery.find( ";4c" ) != std::string::npos
+                          )
+#if 0
+                        ) || (
+                          gfxQuery == "\033[?1;2;4c"    // fucking tmux can't read the specs
+#endif
+                        )
+                      )
+                    {
+                        mclog( LogLevel::Info, "Fallback to sixel graphics protocol" );
+                        gfxMode = GfxMode::Sixel;
+                    }
+                    else
+                    {
+                        mclog( LogLevel::Warning, "Terminal does not support sixel graphics protocol" );
+                        gfxMode = GfxMode::Block;
+                    }
                 }
             }
 
@@ -150,7 +191,7 @@ int main( int argc, char** argv )
     imageThread.join();
     if( !bitmap ) return 1;
 
-    if( blockMode )
+    if( gfxMode == GfxMode::Block )
     {
         uint32_t col = ws.ws_col;
         uint32_t row = std::max<uint16_t>( 1, ws.ws_row - 1 ) * 2;
@@ -192,7 +233,29 @@ int main( int argc, char** argv )
             printf( "\033[0m\n" );
         }
     }
-    else
+    else if( gfxMode == GfxMode::Sixel )
+    {
+        uint32_t col = ws.ws_col * cw;
+        uint32_t row = std::max<uint16_t>( 1, ws.ws_row - 1 ) * ch;
+
+        mclog( LogLevel::Info, "Pixels available: %ux%u", col, row );
+        AdjustBitmap( *bitmap, col, row, scale );
+
+        sixel_dither_t* dither;
+        sixel_dither_new( &dither, -1, nullptr );
+        sixel_dither_initialize( dither, bitmap->Data(), bitmap->Width(), bitmap->Height(), SIXEL_PIXELFORMAT_RGBA8888, SIXEL_LARGE_AUTO, SIXEL_REP_AUTO, SIXEL_QUALITY_HIGHCOLOR );
+
+        sixel_output_t* output;
+        sixel_output_new( &output, []( char* data, int size, void* ) -> int {
+            return write( STDOUT_FILENO, data, size );
+        }, nullptr, nullptr );
+
+        sixel_encode( bitmap->Data(), bitmap->Width(), bitmap->Height(), -1, dither, output );
+
+        sixel_output_destroy( output );
+        sixel_dither_destroy( dither );
+    }
+    else if( gfxMode == GfxMode::Kitty )
     {
         uint32_t col = ws.ws_col * cw;
         uint32_t row = std::max<uint16_t>( 1, ws.ws_row - 1 ) * ch;
@@ -274,6 +337,10 @@ int main( int argc, char** argv )
         if( bitmap->Width() < col ) printf( "\n" );
 
         delete[] b64Data;
+    }
+    else
+    {
+        CheckPanic( false, "Invalid graphics mode" );
     }
 
     return 0;
