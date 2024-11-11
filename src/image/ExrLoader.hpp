@@ -2,13 +2,13 @@
 
 #include <memory>
 
+#include <ImfRgbaFile.h>
+
 #include "util/FileWrapper.hpp"
 #include "util/NoCopy.hpp"
 
 class Bitmap;
 class ExrStream;
-
-namespace Imf_3_2 { class RgbaInputFile; }
 
 class ExrLoader
 {
@@ -23,7 +23,7 @@ public:
 
 private:
     std::unique_ptr<ExrStream> m_stream;
-    std::unique_ptr<Imf_3_2::RgbaInputFile> m_exr;
+    std::unique_ptr<Imf::RgbaInputFile> m_exr;
 
     bool m_valid;
 };

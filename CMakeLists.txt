@@ -129,6 +129,9 @@ set(VV_SRC
 )
 
 add_executable(vv ${VV_SRC})
+target_include_directories(vv PRIVATE
+    ${SIXEL_INCLUDE_DIRS}
+)
 target_link_libraries(vv PRIVATE
     mcoreutil
     mcoreimage
