@@ -486,6 +486,10 @@ DdsLoader::DdsLoader( FileWrapper& file )
     {
     case 0x31545844:    // BC1
     case 0x35545844:    // BC3
+    case 0x31495441:    // BC4
+    case 0x55344342:    // BC4
+    case 0x32495441:    // BC5
+    case 0x55354342:    // BC5
         m_valid = true;
         m_offset = 128;
         break;
@@ -535,9 +539,13 @@ Bitmap* DdsLoader::Load()
     case 0x35545844:
         DecodeBc3( (uint32_t*)bmp->Data(), (const uint64_t*)(buf.data() + m_offset), width, height );
         break;
+    case 0x31495441:
+    case 0x55344342:
     case 80:
         DecodeBc4( (uint32_t*)bmp->Data(), (const uint64_t*)(buf.data() + m_offset), width, height );
         break;
+    case 0x32495441:
+    case 0x55354342:
     case 83:
         DecodeBc5( (uint32_t*)bmp->Data(), (const uint64_t*)(buf.data() + m_offset), width, height );
         break;
