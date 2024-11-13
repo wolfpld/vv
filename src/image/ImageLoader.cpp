@@ -7,6 +7,7 @@
 #include "ImageLoader.hpp"
 #include "JpgLoader.hpp"
 #include "JxlLoader.hpp"
+#include "PcxLoader.hpp"
 #include "PngLoader.hpp"
 #include "PvrLoader.hpp"
 #include "RawLoader.hpp"
@@ -59,6 +60,7 @@ Bitmap* LoadImage( const char* filename )
     if( auto img = LoadImage<RawLoader>( file ); img ) return img;
     if( auto img = LoadImage<TiffLoader>( file ); img ) return img;
     if( auto img = LoadImage<ExrLoader>( file ); img ) return img;
+    if( auto img = LoadImage<PcxLoader>( file ); img ) return img;
 
     mclog( LogLevel::Error, "Failed to load image %s", path.c_str() );
     return nullptr;

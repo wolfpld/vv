@@ -14,7 +14,7 @@ StbImageLoader::StbImageLoader( FileWrapper& file )
 {
     fseek( m_file, 0, SEEK_SET );
     int w, h, comp;
-     m_valid = stbi_info_from_file( m_file, &w, &h, &comp ) == 1;
+    m_valid = stbi_info_from_file( m_file, &w, &h, &comp ) == 1;
 }
 
 bool StbImageLoader::IsValid() const

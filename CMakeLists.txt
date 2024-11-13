@@ -88,6 +88,7 @@ set(MCOREIMAGE_SRC
     src/image/ImageLoader.cpp
     src/image/JpgLoader.cpp
     src/image/JxlLoader.cpp
+    src/image/PcxLoader.cpp
     src/image/PngLoader.cpp
     src/image/PvrLoader.cpp
     src/image/RawLoader.cpp

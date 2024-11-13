@@ -18,6 +18,7 @@ The following types of image files can be viewed in vv:
 - AVIF (AV1 Image File Format),
 - JPEG,
 - JPEG XL,
+- PCX,
 - PNG,
 - ETC (Ericsson Texture Compression), in PVR container,
 - RAW, digital camera negatives, virtually all formats,
