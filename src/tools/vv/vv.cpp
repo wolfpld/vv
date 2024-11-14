@@ -6,6 +6,9 @@
 #include <sixel.h>
 #include <stdio.h>
 #include <sys/ioctl.h>
+#ifdef __FreeBSD__
+#include <unistd.h>
+#endif
 #include <vector>
 #include <zlib.h>
 

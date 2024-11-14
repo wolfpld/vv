@@ -1,4 +1,7 @@
 #include <algorithm>
+#ifdef __FreeBSD__
+#include <cmath>
+#endif
 #include <math.h>
 #include <vector>
 

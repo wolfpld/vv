@@ -9,6 +9,8 @@ project(ModernCore
     LANGUAGES C CXX
 )
 
+link_directories(/usr/local/lib)
+
 include(FindPkgConfig)
 include(cmake/config.cmake)
 include(cmake/CPM.cmake)
@@ -16,6 +18,8 @@ include(cmake/CPM.cmake)
 if(NOT TRACY_ENABLE)
     set(TRACY_OPTIONS "TRACY_STATIC ON")
 endif()
+
+set(CMAKE_CXX_FLAGS "-std=c++20 -I/usr/local/include/OpenEXR -I/usr/local/include/Imath")
 
 CPMAddPackage(
     NAME tracy
@@ -132,6 +136,7 @@ set(VV_SRC
 add_executable(vv ${VV_SRC})
 target_include_directories(vv PRIVATE
     ${SIXEL_INCLUDE_DIRS}
+    "/usr/local/include"
 )
 target_link_libraries(vv PRIVATE
     mcoreutil

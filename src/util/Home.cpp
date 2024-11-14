@@ -1,4 +1,8 @@
+#ifdef __FreeBSD__
+#include <stdlib.h>
+#else
 #include <alloca.h>
+#endif
 #include <pwd.h>
 #include <stdlib.h>
 #include <sys/types.h>
