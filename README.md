@@ -42,6 +42,17 @@ OpenEXR HDR images are properly tone mapped using the Khronos PBR Neutral operat
 
 </div>
 
+### Transparency
+
+Images with an alpha channel are rendered with transparency over the terminal background color. If this is not suitable, vv gives you the option to render the image with either a checkerboard background or a solid color backdrop of your choice.
+
+<div align="center">
+
+![Transparent image](doc/img4.png)
+
+</div>
+
+
 ## Terminal support
 
 In order to be able to view images with vv, you need to use a terminal that implements the [Kitty graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/). If your terminal can't do this, vv will work in a text-only fallback mode with greatly reduced image resolution.
@@ -53,3 +64,5 @@ In order to be able to view images with vv, you need to use a terminal that impl
 </div>
 
 Certain terminal features, such as Unicode fonts or true color support, are assumed to be always available.
+
+On some terminals (e.g. Konsole), images may appear pixelated when using a high DPI monitor. This problem is caused by implementation details of the terminal itself, and cannot be fixed by vv. Try a different terminal if this bothers you.
