@@ -30,7 +30,8 @@ The following types of image files can be viewed in vv:
 - PIC (Softimage),
 - PPM and PGM (only binary),
 - TIFF,
-- WebP.
+- WebP,
+- SVG.
 
 ### Tone mapping
 
@@ -52,6 +53,15 @@ Images with an alpha channel are rendered with transparency over the terminal ba
 
 </div>
 
+### Vector images
+
+Vector image formats, such as SVG, are rendered at a terminal-native resolution, with full transparency support.
+
+<div align="center">
+
+![Vector image](doc/img5.png)
+
+</div>
 
 ## Terminal support
 
