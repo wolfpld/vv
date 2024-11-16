@@ -1,9 +1,9 @@
-#include <alloca.h>
 #include <string.h>
 #include <utility>
 
 #include <stb_image_resize2.h>
 
+#include "Alloca.h"
 #include "Bitmap.hpp"
 
 Bitmap::Bitmap( uint32_t width, uint32_t height )
