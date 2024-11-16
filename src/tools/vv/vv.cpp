@@ -6,6 +6,7 @@
 #include <sixel.h>
 #include <stdio.h>
 #include <sys/ioctl.h>
+#include <unistd.h>
 #include <vector>
 #include <zlib.h>
 
