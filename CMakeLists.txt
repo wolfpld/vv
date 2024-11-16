@@ -42,12 +42,14 @@ CPMAddPackage(
     EXCLUDE_FROM_ALL TRUE
 )
 
+pkg_check_modules(CAIRO REQUIRED cairo)
 pkg_check_modules(EXR REQUIRED OpenEXR)
 pkg_check_modules(HEIF REQUIRED libheif)
 pkg_check_modules(JPEG REQUIRED libjpeg)
 pkg_check_modules(JXL REQUIRED libjxl libjxl_threads)
 pkg_check_modules(PNG REQUIRED libpng)
 pkg_check_modules(RAW REQUIRED libraw)
+pkg_check_modules(RSVG REQUIRED librsvg-2.0)
 pkg_check_modules(SIXEL REQUIRED libsixel)
 pkg_check_modules(TIFF REQUIRED libtiff-4)
 pkg_check_modules(WEBP REQUIRED libwebp)
@@ -95,28 +97,33 @@ set(MCOREIMAGE_SRC
     src/image/StbImageLoader.cpp
     src/image/TiffLoader.cpp
     src/image/WebpLoader.cpp
+    src/image/vector/SvgImage.cpp
 )
 
 add_library(mcoreimage ${MCOREIMAGE_SRC})
 target_link_libraries(mcoreimage PRIVATE
     mcoreutil
     Tracy::TracyClient
+    ${CAIRO_LINK_LIBRARIES}
     ${EXR_LINK_LIBRARIES}
     ${HEIF_LINK_LIBRARIES}
     ${JPEG_LINK_LIBRARIES}
     ${JXL_LINK_LIBRARIES}
     ${PNG_LINK_LIBRARIES}
     ${RAW_LINK_LIBRARIES}
+    ${RSVG_LINK_LIBRARIES}
     ${TIFF_LINK_LIBRARIES}
     ${WEBP_LINK_LIBRARIES}
 )
 target_include_directories(mcoreimage PRIVATE
+    ${CAIRO_INCLUDE_DIRS}
     ${EXR_INCLUDE_DIRS}
     ${HEIF_INCLUDE_DIRS}
     ${JPEG_INCLUDE_DIRS}
     ${JXL_INCLUDE_DIRS}
     ${PNG_INCLUDE_DIRS}
     ${RAW_INCLUDE_DIRS}
+    ${RSVG_INCLUDE_DIRS}
     ${TIFF_INCLUDE_DIRS}
     ${WEBP_INCLUDE_DIRS}
     ${stb_SOURCE_DIR}

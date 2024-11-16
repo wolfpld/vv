@@ -16,6 +16,7 @@
 #include "util/Callstack.hpp"
 #include "util/Logs.hpp"
 #include "util/Panic.hpp"
+#include "util/VectorImage.hpp"
 
 namespace {
 void PrintHelp()
@@ -38,18 +39,53 @@ enum class ScaleMode
     Scale2x,
 };
 
-void AdjustBitmap( Bitmap& bitmap, uint32_t col, uint32_t row, ScaleMode scale )
+void AdjustBitmap( std::unique_ptr<Bitmap>& bitmap, const std::unique_ptr<VectorImage>& vector, uint32_t col, uint32_t row, ScaleMode scale )
 {
-    if( scale == ScaleMode::Fit || bitmap.Width() > col || bitmap.Height() > row )
+    if( bitmap )
     {
-        const auto ratio = std::min( float( col ) / bitmap.Width(), float( row ) / bitmap.Height() );
-        bitmap.Resize( bitmap.Width() * ratio, bitmap.Height() * ratio );
-        mclog( LogLevel::Info, "Image resized: %ux%u", bitmap.Width(), bitmap.Height() );
+        const auto w = bitmap->Width();
+        const auto h = bitmap->Height();
+
+        if( scale == ScaleMode::Fit || w > col || h > row )
+        {
+            const auto ratio = std::min( float( col ) / w, float( row ) / h );
+            bitmap->Resize( w * ratio, h * ratio );
+            mclog( LogLevel::Info, "Image resized: %ux%u", bitmap->Width(), bitmap->Height() );
+        }
+        else if( scale == ScaleMode::Scale2x && w * 2 <= col && h * 2 <= row )
+        {
+            bitmap->Resize( w * 2, h * 2 );
+            mclog( LogLevel::Info, "Image upscaled: %ux%u", bitmap->Width(), bitmap->Height() );
+        }
     }
-    else if( scale == ScaleMode::Scale2x && bitmap.Width() * 2 <= col && bitmap.Height() * 2 <= row )
+    else
     {
-        bitmap.Resize( bitmap.Width() * 2, bitmap.Height() * 2 );
-        mclog( LogLevel::Info, "Image upscaled: %ux%u", bitmap.Width(), bitmap.Height() );
+        CheckPanic( vector, "No image data" );
+
+        auto w = vector->Width();
+        auto h = vector->Height();
+
+        if( w < 0 || h < 0 )
+        {
+            w = col;
+            h = row;
+        }
+
+        if( scale == ScaleMode::Fit || w > col || h > row )
+        {
+            const auto ratio = std::min( float( col ) / w, float( row ) / h );
+            bitmap.reset( vector->Rasterize( w * ratio, h * ratio ) );
+        }
+        else if( scale == ScaleMode::Scale2x && w * 2 <= col && h * 2 <= row )
+        {
+            bitmap.reset( vector->Rasterize( w * 2, h * 2 ) );
+        }
+        else
+        {
+            bitmap.reset( vector->Rasterize( w, h ) );
+        }
+
+        mclog( LogLevel::Info, "Image rasterized: %ux%u", bitmap->Width(), bitmap->Height() );
     }
 }
 
@@ -208,9 +244,22 @@ int main( int argc, char** argv )
 
     const char* imageFile = argv[optind];
     std::unique_ptr<Bitmap> bitmap;
-    auto imageThread = std::thread( [&bitmap, imageFile] {
+    std::unique_ptr<VectorImage> vectorImage;
+
+    auto imageThread = std::thread( [&bitmap, &vectorImage, imageFile] {
         bitmap.reset( LoadImage( imageFile ) );
-        if( bitmap ) mclog( LogLevel::Info, "Image loaded: %ux%u", bitmap->Width(), bitmap->Height() );
+        if( bitmap )
+        {
+            mclog( LogLevel::Info, "Image loaded: %ux%u", bitmap->Width(), bitmap->Height() );
+        }
+        else
+        {
+            vectorImage.reset( LoadVectorImage( imageFile ) );
+            if( vectorImage )
+            {
+                mclog( LogLevel::Info, "Vector image loaded: %ix%i", vectorImage->Width(), vectorImage->Height() );
+            }
+        }
     } );
 
     struct winsize ws;
@@ -277,7 +326,11 @@ int main( int argc, char** argv )
     }
 
     imageThread.join();
-    if( !bitmap ) return 1;
+    if( !bitmap && !vectorImage )
+    {
+        mclog( LogLevel::Error, "Failed to load image %s", imageFile );
+        return 1;
+    }
 
     if( gfxMode == GfxMode::Block )
     {
@@ -285,7 +338,7 @@ int main( int argc, char** argv )
         uint32_t row = std::max<uint16_t>( 1, ws.ws_row - 1 ) * 2;
 
         mclog( LogLevel::Info, "Virtual pixels: %ux%u", col, row );
-        AdjustBitmap( *bitmap, col, row, scale );
+        AdjustBitmap( bitmap, vectorImage, col, row, scale );
 
         if( bg >= 0 ) FillBackground( *bitmap, bg );
         else if( bg == -1 ) FillCheckerboard( *bitmap );
@@ -330,7 +383,7 @@ int main( int argc, char** argv )
         uint32_t row = std::max<uint16_t>( 1, ws.ws_row - 1 ) * ch;
 
         mclog( LogLevel::Info, "Pixels available: %ux%u", col, row );
-        AdjustBitmap( *bitmap, col, row, scale );
+        AdjustBitmap( bitmap, vectorImage, col, row, scale );
 
         if( bg >= 0 ) FillBackground( *bitmap, bg );
         else if( bg == -1 ) FillCheckerboard( *bitmap );
@@ -355,7 +408,7 @@ int main( int argc, char** argv )
         uint32_t row = std::max<uint16_t>( 1, ws.ws_row - 1 ) * ch;
 
         mclog( LogLevel::Info, "Pixels available: %ux%u", col, row );
-        AdjustBitmap( *bitmap, col, row, scale );
+        AdjustBitmap( bitmap, vectorImage, col, row, scale );
         const auto bmpSize = bitmap->Width() * bitmap->Height() * 4;
 
         if( bg >= 0 ) FillBackground( *bitmap, bg );

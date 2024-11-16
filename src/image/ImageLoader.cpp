@@ -18,6 +18,7 @@
 #include "util/FileWrapper.hpp"
 #include "util/Home.hpp"
 #include "util/Logs.hpp"
+#include "vector/SvgImage.hpp"
 
 template<typename T>
 concept ImageLoader = requires( T loader, FileWrapper& file )
@@ -62,6 +63,27 @@ Bitmap* LoadImage( const char* filename )
     if( auto img = LoadImage<ExrLoader>( file ); img ) return img;
     if( auto img = LoadImage<PcxLoader>( file ); img ) return img;
 
-    mclog( LogLevel::Error, "Failed to load image %s", path.c_str() );
+    mclog( LogLevel::Info, "Raster loaders can't open %s", path.c_str() );
+    return nullptr;
+}
+
+VectorImage* LoadVectorImage( const char* filename )
+{
+    ZoneScoped;
+
+    auto path = ExpandHome( filename );
+
+    FileWrapper file( path.c_str(), "rb" );
+    if( !file )
+    {
+        mclog( LogLevel::Error, "Vector image %s does not exist.", path.c_str() );
+        return nullptr;
+    }
+
+    mclog( LogLevel::Info, "Loading vector image %s", path.c_str() );
+
+    if( auto img = std::make_unique<SvgImage>( file, path.c_str() ); img->IsValid() ) return img.release();
+
+    mclog( LogLevel::Info, "Vector loaders can't open %s", path.c_str() );
     return nullptr;
 }
