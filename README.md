@@ -31,6 +31,7 @@ The following types of image files can be viewed in vv:
 - PPM and PGM (only binary),
 - TIFF,
 - WebP,
+- PDF,
 - SVG.
 
 ### Tone mapping
@@ -62,6 +63,10 @@ Vector image formats, such as SVG, are rendered at a terminal-native resolution,
 ![Vector image](doc/img5.png)
 
 </div>
+
+### PDF support
+
+For viewing PDF files, you must have the Poppler library installed on your system. This library is not used at all at build time, and is not an explicit runtime dependency of vv, unlike the other libraries.
 
 ## Terminal support
 
