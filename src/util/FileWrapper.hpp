@@ -24,6 +24,8 @@ public:
         return fread( dst, 1, size, m_file ) == size;
     }
 
+    void Release() { m_file = nullptr; }
+
     operator bool() const { return m_file != nullptr; }
     operator FILE*() { return m_file; }
 

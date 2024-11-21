@@ -18,6 +18,7 @@
 #include "util/FileWrapper.hpp"
 #include "util/Home.hpp"
 #include "util/Logs.hpp"
+#include "vector/PdfImage.hpp"
 #include "vector/SvgImage.hpp"
 
 template<typename T>
@@ -83,6 +84,7 @@ VectorImage* LoadVectorImage( const char* filename )
     mclog( LogLevel::Info, "Loading vector image %s", path.c_str() );
 
     if( auto img = std::make_unique<SvgImage>( file, path.c_str() ); img->IsValid() ) return img.release();
+    if( auto img = std::make_unique<PdfImage>( file, path.c_str() ); img->IsValid() ) return img.release();
 
     mclog( LogLevel::Info, "Vector loaders can't open %s", path.c_str() );
     return nullptr;
