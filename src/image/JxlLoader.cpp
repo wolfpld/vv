@@ -1,9 +1,9 @@
 #include <jxl/decode.h>
 #include <jxl/resizable_parallel_runner.h>
-#include <vector>
 
 #include "JxlLoader.hpp"
 #include "util/Bitmap.hpp"
+#include "util/FileBuffer.hpp"
 #include "util/Panic.hpp"
 
 JxlLoader::JxlLoader( FileWrapper& file )
@@ -25,13 +25,7 @@ Bitmap* JxlLoader::Load()
 {
     CheckPanic( m_valid, "Invalid JPEG XL file" );
 
-    fseek( m_file, 0, SEEK_END );
-    const auto sz = ftell( m_file );
-    fseek( m_file, 0, SEEK_SET );
-
-    std::vector<uint8_t> buf( sz );
-    fread( buf.data(), 1, sz, m_file );
-
+    FileBuffer buf( m_file );
     Bitmap* bmp = nullptr;
 
     auto runner = JxlResizableParallelRunnerCreate( nullptr );
@@ -40,7 +34,7 @@ Bitmap* JxlLoader::Load()
     JxlDecoderSubscribeEvents( dec, JXL_DEC_BASIC_INFO | JXL_DEC_FULL_IMAGE );
     JxlDecoderSetParallelRunner( dec, JxlResizableParallelRunner, runner );
 
-    JxlDecoderSetInput( dec, buf.data(), buf.size() );
+    JxlDecoderSetInput( dec, (const uint8_t*)buf.data(), buf.size() );
     JxlDecoderCloseInput( dec );
 
     for(;;)

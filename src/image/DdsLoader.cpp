@@ -1,9 +1,9 @@
 #include <string.h>
-#include <vector>
 
 #include "bcdec.h"
 #include "DdsLoader.hpp"
 #include "util/Bitmap.hpp"
+#include "util/FileBuffer.hpp"
 #include "util/Panic.hpp"
 
 static void DecodeBc1Part( uint64_t d, uint32_t* dst, uint32_t w )
@@ -517,13 +517,7 @@ Bitmap* DdsLoader::Load()
 {
     CheckPanic( m_valid, "Invalid DDS file" );
 
-    fseek( m_file, 0, SEEK_END );
-    const auto sz = ftell( m_file );
-    fseek( m_file, 0, SEEK_SET );
-
-    std::vector<uint8_t> buf( sz );
-    fread( buf.data(), 1, sz, m_file );
-
+    FileBuffer buf( m_file );
     const auto ptr = (uint32_t*)buf.data();
 
     uint32_t width = ptr[4];

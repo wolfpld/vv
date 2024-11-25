@@ -1,9 +1,9 @@
 #include <libheif/heif.h>
 #include <string.h>
-#include <vector>
 
 #include "HeifLoader.hpp"
 #include "util/Bitmap.hpp"
+#include "util/FileBuffer.hpp"
 #include "util/Panic.hpp"
 
 HeifLoader::HeifLoader( FileWrapper& file )
@@ -28,12 +28,7 @@ Bitmap* HeifLoader::Load()
 {
     CheckPanic( m_valid, "Invalid HEIF file" );
 
-    fseek( m_file, 0, SEEK_END );
-    const auto sz = ftell( m_file );
-    fseek( m_file, 0, SEEK_SET );
-
-    std::vector<uint8_t> buf( sz );
-    fread( buf.data(), 1, sz, m_file );
+    FileBuffer buf( m_file );
 
     auto ctx = heif_context_alloc();
     auto err = heif_context_read_from_memory_without_copy( ctx, buf.data(), buf.size(), nullptr );
