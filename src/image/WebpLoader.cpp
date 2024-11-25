@@ -1,5 +1,5 @@
 #include <string.h>
-#include <webp/decode.h>
+#include <webp/demux.h>
 
 #include "WebpLoader.hpp"
 #include "util/Bitmap.hpp"
@@ -25,16 +25,32 @@ Bitmap* WebpLoader::Load()
 
     FileBuffer buf( m_file );
 
-    int width, height;
-    if( !WebPGetInfo( (const uint8_t*)buf.data(), buf.size(), &width, &height ) ) return nullptr;
+    WebPData data = {
+        .bytes = (const uint8_t*)buf.data(),
+        .size = buf.size()
+    };
 
-    auto bmp = new Bitmap( width, height );
+    WebPAnimDecoderOptions opts;
+    WebPAnimDecoderOptionsInit( &opts );
+    opts.color_mode = MODE_RGBA;
+    opts.use_threads = 1;
 
-    if( WebPDecodeRGBAInto( (const uint8_t*)buf.data(), buf.size(), bmp->Data(), bmp->Width() * bmp->Height() * 4, bmp->Width() * 4 ) == nullptr )
+    WebPAnimDecoder* dec = WebPAnimDecoderNew( &data, &opts );
+
+    WebPAnimInfo info;
+    WebPAnimDecoderGetInfo( dec, &info );
+
+    int delay;
+    uint8_t* out;
+    if( !WebPAnimDecoderGetNext( dec, &out, &delay ) )
     {
-        delete bmp;
+        WebPAnimDecoderDelete( dec );
         return nullptr;
     }
 
+    auto bmp = new Bitmap( info.canvas_width, info.canvas_height );
+    memcpy( bmp->Data(), out, info.canvas_width * info.canvas_height * 4 );
+
+    WebPAnimDecoderDelete( dec );
     return bmp;
 }

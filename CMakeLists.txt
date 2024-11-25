@@ -52,7 +52,7 @@ pkg_check_modules(RAW REQUIRED libraw)
 pkg_check_modules(RSVG REQUIRED librsvg-2.0)
 pkg_check_modules(SIXEL REQUIRED libsixel)
 pkg_check_modules(TIFF REQUIRED libtiff-4)
-pkg_check_modules(WEBP REQUIRED libwebp)
+pkg_check_modules(WEBP REQUIRED libwebpdemux)
 pkg_check_modules(ZLIB REQUIRED zlib)
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_CURRENT_LIST_DIR}/src)
