@@ -75,6 +75,11 @@ std::string QueryTerminal( const char* query )
     const auto sz = strlen( query );
     if( write( s_termFd, query, sz ) != sz ) return {};
 
+    return QueryTerminal();
+}
+
+std::string QueryTerminal()
+{
     std::string ret;
     char buf[1024];
     while( true )

@@ -1,21 +1,36 @@
 #pragma once
 
+#include <memory>
+#include <stdint.h>
+
+#include "ImageLoader.hpp"
 #include "util/FileWrapper.hpp"
 #include "util/NoCopy.hpp"
 
 class Bitmap;
+class FileBuffer;
 
-class WebpLoader
+typedef struct WebPAnimDecoder WebPAnimDecoder;
+
+class WebpLoader : public ImageLoader
 {
 public:
-    explicit WebpLoader( FileWrapper& file );
+    explicit WebpLoader( std::shared_ptr<FileWrapper> file );
+    ~WebpLoader() override;
 
     NoCopy( WebpLoader );
 
-    [[nodiscard]] bool IsValid() const;
-    [[nodiscard]] Bitmap* Load();
+    [[nodiscard]] bool IsValid() const override;
+    [[nodiscard]] bool IsAnimated() override;
+
+    [[nodiscard]] std::unique_ptr<Bitmap> Load() override;
+    [[nodiscard]] std::unique_ptr<BitmapAnim> LoadAnim() override;
 
 private:
-    FileWrapper& m_file;
+    void Open();
+
     bool m_valid;
+
+    std::unique_ptr<FileBuffer> m_buf;
+    WebPAnimDecoder* m_dec;
 };

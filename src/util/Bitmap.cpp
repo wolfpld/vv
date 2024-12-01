@@ -5,6 +5,7 @@
 
 #include "Alloca.h"
 #include "Bitmap.hpp"
+#include "Panic.hpp"
 
 Bitmap::Bitmap( uint32_t width, uint32_t height )
     : m_width( width )
@@ -42,6 +43,30 @@ void Bitmap::Resize( uint32_t width, uint32_t height )
     m_data = newData;
     m_width = width;
     m_height = height;
+}
+
+void Bitmap::Extend( uint32_t width, uint32_t height )
+{
+    CheckPanic( width >= m_width && height >= m_height, "Invalid extension" );
+
+    auto data = new uint8_t[width*height*4];
+    auto stride = width - m_width;
+
+    auto src = m_data;
+    auto dst = data;
+
+    for( uint32_t y=0; y<m_height; y++ )
+    {
+        memcpy( dst, src, m_width * 4 );
+        src += m_width * 4;
+        dst += width * 4;
+        memset( dst, 0, stride * 4 );
+        dst += stride * 4;
+    }
+    memset( dst, 0, ( height - m_height ) * width * 4 );
+
+    delete[] m_data;
+    m_data = data;
 }
 
 void Bitmap::FlipVertical()

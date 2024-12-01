@@ -8,11 +8,11 @@
 #include "util/Bitmap.hpp"
 #include "util/Panic.hpp"
 
-PcxLoader::PcxLoader( FileWrapper& file )
-    : m_file( file )
+PcxLoader::PcxLoader( std::shared_ptr<FileWrapper> file )
+    : ImageLoader( std::move( file ) )
     , m_valid( false )
 {
-    fseek( m_file, 0, SEEK_SET );
+    fseek( *m_file, 0, SEEK_SET );
 
     struct {
         uint8_t magic;
@@ -21,7 +21,7 @@ PcxLoader::PcxLoader( FileWrapper& file )
         uint8_t bpp;
     } header;
 
-    if( fread( &header, 1, sizeof( header ), m_file ) != sizeof( header ) ) return;
+    if( fread( &header, 1, sizeof( header ), *m_file ) != sizeof( header ) ) return;
     if( header.magic != 0x0A ) return;
     if( header.version == 1 || header.version > 5 ) return;
     if( header.encoding != 1 ) return;
@@ -35,17 +35,17 @@ bool PcxLoader::IsValid() const
     return m_valid;
 }
 
-Bitmap* PcxLoader::Load()
+std::unique_ptr<Bitmap> PcxLoader::Load()
 {
     CheckPanic( m_valid, "Invalid PCX file" );
 
-    fseek( m_file, 0, SEEK_SET );
+    fseek( *m_file, 0, SEEK_SET );
 
     int w, h, comp;
-    auto data = drpcx_load( []( void* f, void* out, size_t sz ) { return fread( out, 1, sz, (FILE*)f ); }, (FILE*)m_file, false, &w, &h, &comp, 4 );
+    auto data = drpcx_load( []( void* f, void* out, size_t sz ) { return fread( out, 1, sz, (FILE*)f ); }, (FILE*)*m_file, false, &w, &h, &comp, 4 );
     if( data == nullptr ) return nullptr;
 
-    auto bmp = new Bitmap( w, h );
+    auto bmp = std::make_unique<Bitmap>( w, h );
     memcpy( bmp->Data(), data, w * h * 4 );
 
     drpcx_free( data );

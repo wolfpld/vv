@@ -4,4 +4,6 @@
 
 bool OpenTerminal();
 void CloseTerminal();
+
 std::string QueryTerminal( const char* query );
+std::string QueryTerminal();

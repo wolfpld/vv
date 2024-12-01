@@ -5,6 +5,8 @@
 #include <thread>
 #include <sixel.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <vector>
@@ -13,6 +15,7 @@
 #include "Terminal.hpp"
 #include "image/ImageLoader.hpp"
 #include "util/Bitmap.hpp"
+#include "util/BitmapAnim.hpp"
 #include "util/Callstack.hpp"
 #include "util/Logs.hpp"
 #include "util/Panic.hpp"
@@ -29,6 +32,7 @@ void PrintHelp()
     printf( "  -f, --fit                    Fit image to terminal size\n" );
     printf( "  -G, --background [color]     Set background color to RRGGBB in hex\n" );
     printf( "  -g, --checkerboard           Use checkerboard background\n" );
+    printf( "  -A, --noanim                 Disable animation\n" );
     printf( "  --help                       Print this help\n" );
 }
 
@@ -39,9 +43,29 @@ enum class ScaleMode
     Scale2x,
 };
 
-void AdjustBitmap( std::unique_ptr<Bitmap>& bitmap, const std::unique_ptr<VectorImage>& vector, uint32_t col, uint32_t row, ScaleMode scale )
+void AdjustBitmap( std::unique_ptr<Bitmap>& bitmap, std::unique_ptr<BitmapAnim>& anim, const std::unique_ptr<VectorImage>& vector, uint32_t col, uint32_t row, ScaleMode scale )
 {
-    if( bitmap )
+    if( anim )
+    {
+        const auto& bmp = anim->GetFrame( 0 ).bmp;
+        const auto w = bmp->Width();
+        const auto h = bmp->Height();
+
+        if( scale == ScaleMode::Fit || w > col || h > row )
+        {
+            const auto ratio = std::min( float( col ) / w, float( row ) / h );
+            const auto rw = uint32_t( w * ratio );
+            const auto rh = uint32_t( h * ratio );
+            anim->Resize( rw, rh );
+            mclog( LogLevel::Info, "Animation resized: %ux%u", rw, rh );
+        }
+        else if( scale == ScaleMode::Scale2x && w * 2 <= col && h * 2 <= row )
+        {
+            anim->Resize( w * 2, h * 2 );
+            mclog( LogLevel::Info, "Animation upscaled: %ux%u", w * 2, h * 2 );
+        }
+    }
+    else if( bitmap )
     {
         const auto w = bitmap->Width();
         const auto h = bitmap->Height();
@@ -74,15 +98,15 @@ void AdjustBitmap( std::unique_ptr<Bitmap>& bitmap, const std::unique_ptr<Vector
         if( scale == ScaleMode::Fit || w > col || h > row )
         {
             const auto ratio = std::min( float( col ) / w, float( row ) / h );
-            bitmap.reset( vector->Rasterize( w * ratio, h * ratio ) );
+            bitmap = vector->Rasterize( w * ratio, h * ratio );
         }
         else if( scale == ScaleMode::Scale2x && w * 2 <= col && h * 2 <= row )
         {
-            bitmap.reset( vector->Rasterize( w * 2, h * 2 ) );
+            bitmap = vector->Rasterize( w * 2, h * 2 );
         }
         else
         {
-            bitmap.reset( vector->Rasterize( w, h ) );
+            bitmap = vector->Rasterize( w, h );
         }
 
         mclog( LogLevel::Info, "Image rasterized: %ux%u", bitmap->Width(), bitmap->Height() );
@@ -162,7 +186,144 @@ void FillCheckerboard( Bitmap& bitmap )
 
             px++;
         }
-    }}
+    }
+}
+
+void FillBackground( BitmapAnim& anim, uint32_t bg )
+{
+    for( size_t i=0; i<anim.FrameCount(); i++ )
+    {
+        FillBackground( *anim.GetFrame( i ).bmp, bg );
+    }
+}
+
+void FillCheckerboard( BitmapAnim& anim )
+{
+    for( size_t i=0; i<anim.FrameCount(); i++ )
+    {
+        FillCheckerboard( *anim.GetFrame( i ).bmp );
+    }
+}
+
+void PrintBitmapBlock( Bitmap& bitmap )
+{
+    auto px0 = (uint32_t*)bitmap.Data();
+    auto px1 = px0 + bitmap.Width();
+
+    for( int y=0; y<bitmap.Height() / 2; y++ )
+    {
+        for( int x=0; x<bitmap.Width(); x++ )
+        {
+            auto c0 = *px0++;
+            auto c1 = *px1++;
+            auto r0 = ( c0       ) & 0xFF;
+            auto g0 = ( c0 >> 8  ) & 0xFF;
+            auto b0 = ( c0 >> 16 ) & 0xFF;
+            auto r1 = ( c1       ) & 0xFF;
+            auto g1 = ( c1 >> 8  ) & 0xFF;
+            auto b1 = ( c1 >> 16 ) & 0xFF;
+            printf( "\033[38;2;%d;%d;%dm\033[48;2;%d;%d;%dm▀", r0, g0, b0, r1, g1, b1 );
+        }
+        printf( "\033[0m\n" );
+        px0 += bitmap.Width();
+        px1 += bitmap.Width();
+    }
+    if( ( bitmap.Height() & 1 ) != 0 )
+    {
+        for( int x=0; x<bitmap.Width(); x++ )
+        {
+            auto c0 = *px0++;
+            auto r0 = ( c0       ) & 0xFF;
+            auto g0 = ( c0 >> 8  ) & 0xFF;
+            auto b0 = ( c0 >> 16 ) & 0xFF;
+            printf( "\033[38;2;%d;%d;%dm▀", r0, g0, b0 );
+        }
+        printf( "\033[0m\n" );
+    }
+}
+
+bool UploadKittyImage( Bitmap& bitmap, const char* queryPart, bool anim = false )
+{
+    const auto bmpSize = bitmap.Width() * bitmap.Height() * 4;
+
+    z_stream strm = {};
+    deflateInit( &strm, Z_BEST_SPEED );
+    strm.avail_in = bmpSize;
+    strm.next_in = bitmap.Data();
+
+    std::vector<uint8_t> zdata;
+    zdata.resize( deflateBound( &strm, bmpSize ) );
+    strm.avail_out = zdata.size();
+    strm.next_out = zdata.data();
+
+    auto res = deflate( &strm, Z_FINISH );
+    CheckPanic( res == Z_STREAM_END, "Deflate failed" );
+    const auto zsize = zdata.size() - strm.avail_out;
+    deflateEnd( &strm );
+    mclog( LogLevel::Info, "Compression %zu -> %zu", bmpSize, zsize );
+
+    size_t b64Size = ( ( 4 * zsize / 3 ) + 3 ) & ~3;
+    char* b64Data = new char[b64Size+1];
+    b64Data[b64Size] = 0;
+    size_t outSize;
+    base64_encode( (const char*)zdata.data(), zsize, b64Data, &outSize, 0 );
+    CheckPanic( outSize == b64Size, "Base64 encoding failed" );
+    mclog( LogLevel::Info, "Base64 size: %zu", b64Size );
+
+    std::string payload;
+    if( b64Size <= 4096 )
+    {
+        payload = std::format( "\033_Gf=32,s={},v={},{},o=z;{}\033\\", bitmap.Width(), bitmap.Height(), queryPart, b64Data );
+    }
+    else
+    {
+        auto ptr = b64Data;
+        while( b64Size > 0 )
+        {
+            size_t chunkSize = std::min<size_t>( 4096, b64Size );
+            b64Size -= chunkSize;
+
+            if( ptr == b64Data )
+            {
+                payload.append( std::format( "\033_Gf=32,s={},v={},{},o=z,m=1;", bitmap.Width(), bitmap.Height(), queryPart ) );
+            }
+            else
+            {
+                int m = b64Size > 0 ? 1 : 0;
+                if( anim )
+                {
+                    payload.append( std::format( "\033_Gm={},a=f;", m ) );
+                }
+                else
+                {
+                    payload.append( std::format( "\033_Gm={};", m ) );
+                }
+            }
+
+            payload.append( ptr, chunkSize );
+            payload.append( "\033\\" );
+
+            ptr += chunkSize;
+        }
+    }
+    delete[] b64Data;
+
+    auto sz = payload.size();
+    auto ptr = payload.c_str();
+    while( sz > 0 )
+    {
+        auto wr = write( STDOUT_FILENO, ptr, sz );
+        if( wr < 0 )
+        {
+            mclog( LogLevel::Error, "Failed to write to terminal" );
+            return false;
+        }
+        sz -= wr;
+        ptr += wr;
+    }
+
+    return true;
+}
 }
 
 int main( int argc, char** argv )
@@ -182,6 +343,7 @@ int main( int argc, char** argv )
         { "sixel", no_argument, nullptr, '6' },
         { "background", required_argument, nullptr, 'G' },
         { "checkerboard", no_argument, nullptr, 'g' },
+        { "noanim", no_argument, nullptr, 'A' },
         { "help", no_argument, nullptr, OptHelp },
     };
 
@@ -195,9 +357,10 @@ int main( int argc, char** argv )
     GfxMode gfxMode = GfxMode::Kitty;
     ScaleMode scale = ScaleMode::None;
     int bg = -2;
+    bool disableAnimation = false;
 
     int opt;
-    while( ( opt = getopt_long( argc, argv, "debsf6G:g", longOptions, nullptr ) ) != -1 )
+    while( ( opt = getopt_long( argc, argv, "debsf6G:gA", longOptions, nullptr ) ) != -1 )
     {
         switch (opt)
         {
@@ -226,6 +389,9 @@ int main( int argc, char** argv )
         case 'g':
             bg = -1;
             break;
+        case 'A':
+            disableAnimation = true;
+            break;
         default:
             printf( "\n" );
             [[fallthrough]];
@@ -244,17 +410,34 @@ int main( int argc, char** argv )
 
     const char* imageFile = argv[optind];
     std::unique_ptr<Bitmap> bitmap;
+    std::unique_ptr<BitmapAnim> anim;
     std::unique_ptr<VectorImage> vectorImage;
 
-    auto imageThread = std::thread( [&bitmap, &vectorImage, imageFile] {
-        bitmap.reset( LoadImage( imageFile ) );
-        if( bitmap )
+    auto imageThread = std::thread( [&bitmap, &anim, &vectorImage, imageFile, disableAnimation] {
+        auto loader = GetImageLoader( imageFile );
+        if( loader )
+        {
+            if( !disableAnimation && loader->IsAnimated() )
+            {
+                anim = loader->LoadAnim();
+            }
+            else
+            {
+                bitmap = loader->Load();
+            }
+        }
+        if( anim )
+        {
+            mclog( LogLevel::Info, "Animated image with %zu frames", anim->FrameCount() );
+            anim->NormalizeSize();
+        }
+        else if( bitmap )
         {
             mclog( LogLevel::Info, "Image loaded: %ux%u", bitmap->Width(), bitmap->Height() );
         }
         else
         {
-            vectorImage.reset( LoadVectorImage( imageFile ) );
+            vectorImage = LoadVectorImage( imageFile );
             if( vectorImage )
             {
                 mclog( LogLevel::Info, "Vector image loaded: %ix%i", vectorImage->Width(), vectorImage->Height() );
@@ -276,6 +459,8 @@ int main( int argc, char** argv )
         }
         else
         {
+            atexit( CloseTerminal );
+
             const auto charSizeResp = QueryTerminal( "\033[16t" );
             if( sscanf( charSizeResp.c_str(), "\033[6;%d;%dt", &ch, &cw ) != 2 )
             {
@@ -320,13 +505,11 @@ int main( int argc, char** argv )
                     }
                 }
             }
-
-            CloseTerminal();
         }
     }
 
     imageThread.join();
-    if( !bitmap && !vectorImage )
+    if( !bitmap && !anim && !vectorImage )
     {
         mclog( LogLevel::Error, "Failed to load image %s", imageFile );
         return 1;
@@ -338,52 +521,52 @@ int main( int argc, char** argv )
         uint32_t row = std::max<uint16_t>( 1, ws.ws_row - 1 ) * 2;
 
         mclog( LogLevel::Info, "Virtual pixels: %ux%u", col, row );
-        AdjustBitmap( bitmap, vectorImage, col, row, scale );
+        AdjustBitmap( bitmap, anim, vectorImage, col, row, scale );
 
-        if( bg >= 0 ) FillBackground( *bitmap, bg );
-        else if( bg == -1 ) FillCheckerboard( *bitmap );
-
-        auto px0 = (uint32_t*)bitmap->Data();
-        auto px1 = px0 + bitmap->Width();
-
-        for( int y=0; y<bitmap->Height() / 2; y++ )
+        if( anim )
         {
-            for( int x=0; x<bitmap->Width(); x++ )
-            {
-                auto c0 = *px0++;
-                auto c1 = *px1++;
-                auto r0 = ( c0       ) & 0xFF;
-                auto g0 = ( c0 >> 8  ) & 0xFF;
-                auto b0 = ( c0 >> 16 ) & 0xFF;
-                auto r1 = ( c1       ) & 0xFF;
-                auto g1 = ( c1 >> 8  ) & 0xFF;
-                auto b1 = ( c1 >> 16 ) & 0xFF;
-                printf( "\033[38;2;%d;%d;%dm\033[48;2;%d;%d;%dm▀", r0, g0, b0, r1, g1, b1 );
-            }
-            printf( "\033[0m\n" );
-            px0 += bitmap->Width();
-            px1 += bitmap->Width();
+            if( bg >= 0 ) FillBackground( *anim, bg );
+            else if( bg == -1 ) FillCheckerboard( *anim );
         }
-        if( ( bitmap->Height() & 1 ) != 0 )
+        else
         {
-            for( int x=0; x<bitmap->Width(); x++ )
+            if( bg >= 0 ) FillBackground( *bitmap, bg );
+            else if( bg == -1 ) FillCheckerboard( *bitmap );
+        }
+
+        if( anim )
+        {
+            printf( "\033c" );
+            for(;;)
             {
-                auto c0 = *px0++;
-                auto r0 = ( c0       ) & 0xFF;
-                auto g0 = ( c0 >> 8  ) & 0xFF;
-                auto b0 = ( c0 >> 16 ) & 0xFF;
-                printf( "\033[38;2;%d;%d;%dm▀", r0, g0, b0 );
+                for( size_t i=0; i<anim->FrameCount(); i++ )
+                {
+                    printf( "\033[s" );
+                    const auto& frame = anim->GetFrame( i );
+                    PrintBitmapBlock( *frame.bmp );
+                    usleep( frame.delay_us );
+                    printf( "\033[u" );
+                }
             }
-            printf( "\033[0m\n" );
+        }
+        else
+        {
+            PrintBitmapBlock( *bitmap );
         }
     }
     else if( gfxMode == GfxMode::Sixel )
     {
+        if( anim )
+        {
+            mclog( LogLevel::Error, "Animation is not supported in sixel graphics mode" );
+            return 1;
+        }
+
         uint32_t col = ws.ws_col * cw;
         uint32_t row = std::max<uint16_t>( 1, ws.ws_row - 1 ) * ch;
 
         mclog( LogLevel::Info, "Pixels available: %ux%u", col, row );
-        AdjustBitmap( bitmap, vectorImage, col, row, scale );
+        AdjustBitmap( bitmap, anim, vectorImage, col, row, scale );
 
         if( bg >= 0 ) FillBackground( *bitmap, bg );
         else if( bg == -1 ) FillCheckerboard( *bitmap );
@@ -408,85 +591,59 @@ int main( int argc, char** argv )
         uint32_t row = std::max<uint16_t>( 1, ws.ws_row - 1 ) * ch;
 
         mclog( LogLevel::Info, "Pixels available: %ux%u", col, row );
-        AdjustBitmap( bitmap, vectorImage, col, row, scale );
-        const auto bmpSize = bitmap->Width() * bitmap->Height() * 4;
+        AdjustBitmap( bitmap, anim, vectorImage, col, row, scale );
 
-        if( bg >= 0 ) FillBackground( *bitmap, bg );
-        else if( bg == -1 ) FillCheckerboard( *bitmap );
-
-        z_stream strm = {};
-        deflateInit( &strm, Z_BEST_SPEED );
-        strm.avail_in = bmpSize;
-        strm.next_in = bitmap->Data();
-
-        std::vector<uint8_t> zdata;
-        zdata.resize( deflateBound( &strm, bmpSize ) );
-        strm.avail_out = zdata.size();
-        strm.next_out = zdata.data();
-
-        auto res = deflate( &strm, Z_FINISH );
-        CheckPanic( res == Z_STREAM_END, "Deflate failed" );
-        const auto zsize = zdata.size() - strm.avail_out;
-        deflateEnd( &strm );
-        mclog( LogLevel::Info, "Compression %zu -> %zu", bmpSize, zsize );
-
-        size_t b64Size = ( ( 4 * zsize / 3 ) + 3 ) & ~3;
-        char* b64Data = new char[b64Size+1];
-        b64Data[b64Size] = 0;
-        size_t outSize;
-        base64_encode( (const char*)zdata.data(), zsize, b64Data, &outSize, 0 );
-        CheckPanic( outSize == b64Size, "Base64 encoding failed" );
-        mclog( LogLevel::Info, "Base64 size: %zu", b64Size );
-
-        std::string payload;
-        if( b64Size <= 4096 )
+        if( anim )
         {
-            payload = std::format( "\033_Gf=32,s={},v={},a=T,o=z;{}\033\\", bitmap->Width(), bitmap->Height(), b64Data );
+            if( bg >= 0 ) FillBackground( *anim, bg );
+            else if( bg == -1 ) FillCheckerboard( *anim );
         }
         else
         {
-            auto ptr = b64Data;
-            while( b64Size > 0 )
-            {
-                size_t chunkSize = std::min<size_t>( 4096, b64Size );
-                b64Size -= chunkSize;
+            if( bg >= 0 ) FillBackground( *bitmap, bg );
+            else if( bg == -1 ) FillCheckerboard( *bitmap );
+        }
 
-                if( ptr == b64Data )
+        if( anim )
+        {
+            int id = -1;
+            for( size_t i=0; i<anim->FrameCount(); i++ )
+            {
+                const auto& frame = anim->GetFrame( i );
+                const auto delay_ms = std::max<uint32_t>( frame.delay_us / 1000, 1 );
+                std::string query;
+                if( i == 0 )
                 {
-                    payload.append( std::format( "\033_Gf=32,s={},v={},a=T,o=z,m=1;", bitmap->Width(), bitmap->Height() ) );
-                }
-                else if( b64Size > 0 )
-                {
-                    payload.append( "\033_Gm=1;" );
+                    query = std::format( "I=1,z={}", delay_ms );
+                    if( !UploadKittyImage( *anim->GetFrame( i ).bmp, query.c_str() ) ) return 1;
+
+                    auto res = QueryTerminal();
+                    if( !res.ends_with( ";OK\033\\" ) )
+                    {
+                        mclog( LogLevel::Error, "Failed to upload image: %s", res.c_str() + 1 );
+                        return 1;
+                    }
+
+                    sscanf( res.c_str(), "\033_Gi=%i;OK\033\\", &id );
+                    mclog( LogLevel::Info, "Image ID: %i", id );
                 }
                 else
                 {
-                    payload.append( "\033_Gm=0;" );
+                    query = std::format( "a=f,i={},z={}", id, delay_ms );
+                    if( !UploadKittyImage( *anim->GetFrame( i ).bmp, query.c_str(), true ) ) return 1;
                 }
-                payload.append( ptr, chunkSize );
-                payload.append( "\033\\" );
-
-                ptr += chunkSize;
             }
-        }
 
-        auto sz = payload.size();
-        auto ptr = payload.c_str();
-        while( sz > 0 )
+            auto query = std::format( "\033_Ga=p,i={},q=1\033\\\033_Ga=a,i={},s=3,v=1,q=1\033\\", id, id );
+            write( STDOUT_FILENO, query.c_str(), query.size() );
+
+            if( anim->GetFrame( 0 ).bmp->Width() < col ) printf( "\n" );
+        }
+        else
         {
-            auto wr = write( STDOUT_FILENO, ptr, sz );
-            if( wr < 0 )
-            {
-                mclog( LogLevel::Error, "Failed to write to terminal" );
-                return 1;
-            }
-            sz -= wr;
-            ptr += wr;
+            if( !UploadKittyImage( *bitmap, "a=T" ) ) return 1;
+            if( bitmap->Width() < col ) printf( "\n" );
         }
-
-        if( bitmap->Width() < col ) printf( "\n" );
-
-        delete[] b64Data;
     }
     else
     {

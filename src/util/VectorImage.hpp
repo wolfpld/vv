@@ -1,5 +1,7 @@
 #pragma once
 
+#include <memory>
+
 #include "NoCopy.hpp"
 
 class Bitmap;
@@ -16,5 +18,5 @@ public:
     [[nodiscard]] virtual int Width() const { return -1; }
     [[nodiscard]] virtual int Height() const { return -1; }
 
-    [[nodiscard]] virtual Bitmap* Rasterize( int width, int height ) = 0;
+    [[nodiscard]] virtual std::unique_ptr<Bitmap> Rasterize( int width, int height ) = 0;
 };

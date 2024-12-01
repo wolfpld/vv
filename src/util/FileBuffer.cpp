@@ -37,6 +37,11 @@ FileBuffer::FileBuffer( FILE* file )
     m_buffer = (const char*)mmap( nullptr, m_size, PROT_READ, MAP_SHARED, fileno( file ), 0 );
 }
 
+FileBuffer::FileBuffer( const std::shared_ptr<FileWrapper>& file )
+    : FileBuffer( *file )
+{
+}
+
 FileBuffer::~FileBuffer()
 {
     if( m_buffer ) munmap( (void*)m_buffer, m_size );

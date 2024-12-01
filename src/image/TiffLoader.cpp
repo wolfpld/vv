@@ -4,16 +4,17 @@
 #include "TiffLoader.hpp"
 #include "util/Bitmap.hpp"
 
-TiffLoader::TiffLoader( FileWrapper& file )
-    : m_tiff( nullptr )
+TiffLoader::TiffLoader( std::shared_ptr<FileWrapper> file )
+    : ImageLoader( std::move( file ) )
+    , m_tiff( nullptr )
 {
-    fseek( file, 0, SEEK_SET );
+    fseek( *m_file, 0, SEEK_SET );
     uint8_t hdr[4];
-    if( fread( hdr, 1, 4, file ) == 4 && ( memcmp( hdr, "II*\0", 4 ) == 0 || memcmp( hdr, "MM\0*", 4 ) == 0 ) )
+    if( fread( hdr, 1, 4, *m_file ) == 4 && ( memcmp( hdr, "II*\0", 4 ) == 0 || memcmp( hdr, "MM\0*", 4 ) == 0 ) )
     {
-        fseek( file, 0, SEEK_SET );
-        fflush( file );
-        m_tiff = TIFFFdOpen( fileno( file ), "<unknown>", "r" );
+        fseek( *m_file, 0, SEEK_SET );
+        fflush( *m_file );
+        m_tiff = TIFFFdOpen( fileno( *m_file ), "<unknown>", "r" );
     }
 }
 
@@ -27,17 +28,16 @@ bool TiffLoader::IsValid() const
     return m_tiff != nullptr;
 }
 
-Bitmap* TiffLoader::Load()
+std::unique_ptr<Bitmap> TiffLoader::Load()
 {
     uint32_t width, height;
     TIFFGetField( m_tiff, TIFFTAG_IMAGEWIDTH, &width );
     TIFFGetField( m_tiff, TIFFTAG_IMAGELENGTH, &height );
 
-    auto bmp = new Bitmap( width, height );
+    auto bmp = std::make_unique<Bitmap>( width, height );
 
     if( TIFFReadRGBAImageOriented( m_tiff, width, height, (uint32_t*)bmp->Data(), ORIENTATION_TOPLEFT ) == 0 )
     {
-        delete bmp;
         return nullptr;
     }
 

@@ -1,21 +1,22 @@
 #pragma once
 
+#include "ImageLoader.hpp"
 #include "util/FileWrapper.hpp"
 #include "util/NoCopy.hpp"
 
 class Bitmap;
 struct tiff;
 
-class TiffLoader
+class TiffLoader : public ImageLoader
 {
 public:
-    explicit TiffLoader( FileWrapper& file );
-    ~TiffLoader();
+    explicit TiffLoader( std::shared_ptr<FileWrapper> file );
+    ~TiffLoader() override;
 
     NoCopy( TiffLoader );
 
-    [[nodiscard]] bool IsValid() const;
-    [[nodiscard]] Bitmap* Load();
+    [[nodiscard]] bool IsValid() const override;
+    [[nodiscard]] std::unique_ptr<Bitmap> Load() override;
 
 private:
     struct tiff* m_tiff;

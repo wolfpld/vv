@@ -1,21 +1,21 @@
 #pragma once
 
+#include "ImageLoader.hpp"
 #include "util/FileWrapper.hpp"
 #include "util/NoCopy.hpp"
 
 class Bitmap;
 
-class JxlLoader
+class JxlLoader : public ImageLoader
 {
 public:
-    explicit JxlLoader( FileWrapper& file );
+    explicit JxlLoader( std::shared_ptr<FileWrapper> file );
 
     NoCopy( JxlLoader );
 
-    [[nodiscard]] bool IsValid() const;
-    [[nodiscard]] Bitmap* Load();
+    [[nodiscard]] bool IsValid() const override;
+    [[nodiscard]] std::unique_ptr<Bitmap> Load() override;
 
 private:
-    FileWrapper& m_file;
     bool m_valid;
 };

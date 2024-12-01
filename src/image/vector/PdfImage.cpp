@@ -84,7 +84,7 @@ bool PdfImage::IsValid() const
     return m_pdf != nullptr;
 }
 
-Bitmap* PdfImage::Rasterize( int width, int height )
+std::unique_ptr<Bitmap> PdfImage::Rasterize( int width, int height )
 {
     CheckPanic( m_page, "Invalid PDF image" );
 
@@ -97,7 +97,7 @@ Bitmap* PdfImage::Rasterize( int width, int height )
 
     RenderPage( m_page, cr );
 
-    Bitmap* img = new Bitmap( width, height );
+    auto img = std::make_unique<Bitmap>( width, height );
     auto dst = (uint32_t*)img->Data();
     auto src = data;
 

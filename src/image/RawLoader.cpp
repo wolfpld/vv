@@ -6,10 +6,11 @@
 #include "util/FileBuffer.hpp"
 #include "util/Panic.hpp"
 
-RawLoader::RawLoader( FileWrapper& file )
-    : m_raw( std::make_unique<LibRaw>() )
+RawLoader::RawLoader( std::shared_ptr<FileWrapper> file )
+    : ImageLoader( std::move( file ) )
+    , m_raw( std::make_unique<LibRaw>() )
 {
-    m_buf = std::make_unique<FileBuffer>( file );
+    m_buf = std::make_unique<FileBuffer>( m_file );
     m_valid = m_raw->open_buffer( m_buf->data(), m_buf->size() ) == 0;
 }
 
@@ -22,7 +23,7 @@ bool RawLoader::IsValid() const
     return m_valid;
 }
 
-Bitmap* RawLoader::Load()
+std::unique_ptr<Bitmap> RawLoader::Load()
 {
     CheckPanic( m_valid, "Invalid RAW file" );
 
@@ -30,7 +31,7 @@ Bitmap* RawLoader::Load()
     m_raw->dcraw_process();
     auto img = m_raw->dcraw_make_mem_image();
 
-    auto bmp = new Bitmap( img->width, img->height );
+    auto bmp = std::make_unique<Bitmap>( img->width, img->height );
     auto src = img->data;
     auto dst = (uint32_t*)bmp->Data();
     auto sz = img->width * img->height;
