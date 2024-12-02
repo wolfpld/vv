@@ -17,7 +17,6 @@ public:
     };
 
     BitmapAnim( uint32_t frameCount );
-
     NoCopy( BitmapAnim );
 
     void AddFrame( std::shared_ptr<Bitmap> bmp, uint32_t delay_us );

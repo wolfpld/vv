@@ -6,6 +6,7 @@
 
 class Bitmap;
 class BitmapAnim;
+class BitmapHdr;
 class FileWrapper;
 class VectorImage;
 
@@ -19,9 +20,11 @@ public:
 
     [[nodiscard]] virtual bool IsValid() const = 0;
     [[nodiscard]] virtual bool IsAnimated() { return false; }
+    [[nodiscard]] virtual bool IsHdr() { return false; }
 
     [[nodiscard]] virtual std::unique_ptr<Bitmap> Load() = 0;
     [[nodiscard]] virtual std::unique_ptr<BitmapAnim> LoadAnim() { return nullptr; }
+    [[nodiscard]] virtual std::unique_ptr<BitmapHdr> LoadHdr() { return nullptr; }
 
 protected:
     std::shared_ptr<FileWrapper> m_file;

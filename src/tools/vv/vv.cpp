@@ -16,6 +16,7 @@
 #include "image/ImageLoader.hpp"
 #include "util/Bitmap.hpp"
 #include "util/BitmapAnim.hpp"
+#include "util/BitmapHdr.hpp"
 #include "util/Callstack.hpp"
 #include "util/Logs.hpp"
 #include "util/Panic.hpp"
@@ -420,6 +421,11 @@ int main( int argc, char** argv )
             if( !disableAnimation && loader->IsAnimated() )
             {
                 anim = loader->LoadAnim();
+            }
+            else if( loader->IsHdr() )
+            {
+                auto hdr = loader->LoadHdr();
+                bitmap = hdr->Tonemap();
             }
             else
             {
