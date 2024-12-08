@@ -1,6 +1,9 @@
 #include <vector>
 
+#include <ImfChromaticities.h>
 #include <ImfRgbaFile.h>
+#include <ImfStandardAttributes.h>
+#include <lcms2.h>
 
 #include "ExrLoader.hpp"
 #include "util/Bitmap.hpp"
@@ -71,18 +74,64 @@ std::unique_ptr<BitmapHdr> ExrLoader::LoadHdr()
     m_exr->readPixels( dw.min.y, dw.max.y );
 
     auto bmp = std::make_unique<BitmapHdr>( width, height );
-    auto dst = bmp->Data();
-    auto src = hdr.data();
-    auto sz = width * height;
-    do
+
+    const auto chroma = m_exr->header().findTypedAttribute<OPENEXR_IMF_INTERNAL_NAMESPACE::ChromaticitiesAttribute>( "chromaticities" );
+    if( chroma )
     {
-        *dst++ = src->r;
-        *dst++ = src->g;
-        *dst++ = src->b;
-        *dst++ = src->a;
-        src++;
+        const auto neutral = m_exr->header().findTypedAttribute<IMATH_NAMESPACE::V2f>( "adoptedNeutral" );
+        const auto white = neutral ? cmsCIExyY { neutral->x, neutral->y, 1 } : cmsCIExyY { 0.3127f, 0.329f, 1 };
+
+        const auto& cv = chroma->value();
+        const cmsCIExyYTRIPLE primaries = {
+            { chroma->value().red.x, chroma->value().red.y, 1 },
+            { chroma->value().green.x, chroma->value().green.y, 1 },
+            { chroma->value().blue.x, chroma->value().blue.y, 1 }
+        };
+        cmsToneCurve* linear = cmsBuildGamma( nullptr, 1 );
+        cmsToneCurve* linear3[3] = { linear, linear, linear };
+
+        const cmsCIExyY white709 = { 0.3127f, 0.329f, 1 };
+        const cmsCIExyYTRIPLE primaries709 = {
+            { 0.64f, 0.33f, 1 },
+            { 0.30f, 0.60f, 1 },
+            { 0.15f, 0.06f, 1 }
+        };
+
+        auto profileIn = cmsCreateRGBProfile( &white, &primaries, linear3 );
+        auto profileOut = cmsCreateRGBProfile( &white709, &primaries709, linear3 );
+        auto transform = cmsCreateTransform( profileIn, TYPE_RGBA_HALF_FLT, profileOut, TYPE_RGBA_FLT, INTENT_PERCEPTUAL, 0 );
+
+        cmsDoTransform( transform, hdr.data(), bmp->Data(), width * height );
+
+        cmsDeleteTransform( transform );
+        cmsFreeToneCurve( linear );
+        cmsCloseProfile( profileIn );
+        cmsCloseProfile( profileOut );
+
+        auto ptr = bmp->Data() + 3;
+        auto sz = width * height;
+        do
+        {
+            *ptr = 1;
+            ptr += 4;
+        }
+        while( --sz );
     }
-    while( --sz );
+    else
+    {
+        auto dst = bmp->Data();
+        auto src = hdr.data();
+        auto sz = width * height;
+        do
+        {
+            *dst++ = src->r;
+            *dst++ = src->g;
+            *dst++ = src->b;
+            *dst++ = 1;
+            src++;
+        }
+        while( --sz );
+    }
 
     return bmp;
 }
