@@ -5,6 +5,7 @@
 
 #include "JpgLoader.hpp"
 #include "util/Bitmap.hpp"
+#include "util/FileWrapper.hpp"
 #include "util/Panic.hpp"
 
 JpgLoader::JpgLoader( std::shared_ptr<FileWrapper> file )

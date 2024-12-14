@@ -52,6 +52,12 @@ HdrColor PbrNeutral( const HdrColor& hdr )
         std::lerp( color.b, newPeak, g ),
     };
 }
+
+float LinearToSrgb( float x )
+{
+    if( x <= 0.0031308f ) return 12.92f * x;
+    return 1.055f * std::pow( x, 1.0f / 2.4f ) - 0.055f;
+}
 }
 
 std::unique_ptr<Bitmap> BitmapHdr::Tonemap()
@@ -63,14 +69,11 @@ std::unique_ptr<Bitmap> BitmapHdr::Tonemap()
 
     do
     {
-        constexpr auto gamma = 2.2f;
-        constexpr auto invGamma = 1.0f / gamma;
-
         const auto color = PbrNeutral( { src[0], src[1], src[2] } );
 
-        const auto r = std::pow( color.r, invGamma );
-        const auto g = std::pow( color.g, invGamma );
-        const auto b = std::pow( color.b, invGamma );
+        const auto r = LinearToSrgb( color.r );
+        const auto g = LinearToSrgb( color.g );
+        const auto b = LinearToSrgb( color.b );
         const auto a = src[3];
 
         *dst++ = (uint32_t( std::clamp( a, 0.0f, 1.0f ) * 255.0f ) << 24) |

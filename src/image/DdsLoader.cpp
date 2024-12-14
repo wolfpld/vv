@@ -4,6 +4,7 @@
 #include "DdsLoader.hpp"
 #include "util/Bitmap.hpp"
 #include "util/FileBuffer.hpp"
+#include "util/FileWrapper.hpp"
 #include "util/Panic.hpp"
 
 static void DecodeBc1Part( uint64_t d, uint32_t* dst, uint32_t w )

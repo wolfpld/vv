@@ -3,6 +3,7 @@
 #include "PvrLoader.hpp"
 #include "util/Bitmap.hpp"
 #include "util/FileBuffer.hpp"
+#include "util/FileWrapper.hpp"
 #include "util/Panic.hpp"
 
 #ifdef __ARM_NEON

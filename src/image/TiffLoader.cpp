@@ -3,6 +3,7 @@
 
 #include "TiffLoader.hpp"
 #include "util/Bitmap.hpp"
+#include "util/FileWrapper.hpp"
 
 TiffLoader::TiffLoader( std::shared_ptr<FileWrapper> file )
     : ImageLoader( std::move( file ) )

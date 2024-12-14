@@ -4,6 +4,7 @@
 
 #include "PngLoader.hpp"
 #include "util/Bitmap.hpp"
+#include "util/FileWrapper.hpp"
 #include "util/Panic.hpp"
 
 PngLoader::PngLoader( std::shared_ptr<FileWrapper> file )

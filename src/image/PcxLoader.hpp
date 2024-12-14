@@ -2,7 +2,6 @@
 
 #include "ImageLoader.hpp"
 #include "util/NoCopy.hpp"
-#include "util/FileWrapper.hpp"
 
 class Bitmap;
 

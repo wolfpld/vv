@@ -42,7 +42,7 @@ std::unique_ptr<ImageLoader> GetImageLoader( const char* filename )
 
     auto path = ExpandHome( filename );
     auto file = std::make_shared<FileWrapper>( path.c_str(), "rb" );
-    if( !file )
+    if( !*file )
     {
         mclog( LogLevel::Error, "Image %s does not exist.", path.c_str() );
         return nullptr;

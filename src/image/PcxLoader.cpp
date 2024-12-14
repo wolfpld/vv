@@ -6,6 +6,7 @@
 
 #include "PcxLoader.hpp"
 #include "util/Bitmap.hpp"
+#include "util/FileWrapper.hpp"
 #include "util/Panic.hpp"
 
 PcxLoader::PcxLoader( std::shared_ptr<FileWrapper> file )

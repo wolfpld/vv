@@ -4,7 +4,6 @@
 #include <stdint.h>
 
 #include "ImageLoader.hpp"
-#include "util/FileWrapper.hpp"
 #include "util/NoCopy.hpp"
 
 class Bitmap;
@@ -27,7 +26,7 @@ public:
     [[nodiscard]] std::unique_ptr<BitmapAnim> LoadAnim() override;
 
 private:
-    void Open();
+    bool Open();
 
     bool m_valid;
 

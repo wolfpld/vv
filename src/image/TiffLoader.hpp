@@ -1,7 +1,6 @@
 #pragma once
 
 #include "ImageLoader.hpp"
-#include "util/FileWrapper.hpp"
 #include "util/NoCopy.hpp"
 
 class Bitmap;

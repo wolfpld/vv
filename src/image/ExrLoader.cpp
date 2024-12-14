@@ -8,6 +8,7 @@
 #include "ExrLoader.hpp"
 #include "util/Bitmap.hpp"
 #include "util/BitmapHdr.hpp"
+#include "util/FileWrapper.hpp"
 #include "util/Panic.hpp"
 
 class ExrStream : public Imf::IStream
@@ -90,8 +91,8 @@ std::unique_ptr<BitmapHdr> ExrLoader::LoadHdr()
         cmsToneCurve* linear = cmsBuildGamma( nullptr, 1 );
         cmsToneCurve* linear3[3] = { linear, linear, linear };
 
-        const cmsCIExyY white709 = { 0.3127f, 0.329f, 1 };
-        const cmsCIExyYTRIPLE primaries709 = {
+        constexpr cmsCIExyY white709 = { 0.3127f, 0.329f, 1 };
+        constexpr cmsCIExyYTRIPLE primaries709 = {
             { 0.64f, 0.33f, 1 },
             { 0.30f, 0.60f, 1 },
             { 0.15f, 0.06f, 1 }
@@ -104,9 +105,9 @@ std::unique_ptr<BitmapHdr> ExrLoader::LoadHdr()
         cmsDoTransform( transform, hdr.data(), bmp->Data(), width * height );
 
         cmsDeleteTransform( transform );
-        cmsFreeToneCurve( linear );
         cmsCloseProfile( profileIn );
         cmsCloseProfile( profileOut );
+        cmsFreeToneCurve( linear );
 
         auto ptr = bmp->Data() + 3;
         auto sz = width * height;
