@@ -13,7 +13,7 @@ With vv you can display image files directly in your terminal. This works both l
 The following types of image files can be viewed in vv:
 
 - BC (Block Compression, also known as DXTC, S3TC), in DDS container,
-- OpenEXR HDR images,
+- OpenEXR,
 - HEIF (High Efficiency Image File Format),
 - AVIF (AV1 Image File Format),
 - JPEG,
@@ -30,17 +30,27 @@ The following types of image files can be viewed in vv:
 - PIC (Softimage),
 - PPM and PGM (only binary),
 - TIFF,
-- WebP,
+- WebP (with animations),
 - PDF,
 - SVG.
 
-### Tone mapping
+### High dynamic range
 
-OpenEXR HDR images are properly tone mapped using the Khronos PBR Neutral operator.
+Loading of HDR images is supported for OpenEXR, HEIF, AVIF, JPEG XL, and RGBE formats. HDR images are properly tone mapped using the Khronos PBR Neutral operator for display on the SDR terminal.
 
 <div align="center">
 
 ![HDR image](doc/img2.png)
+
+</div>
+
+### Color management
+
+Color profiles embedded in images are taken into account to ensure that images look exactly as they should.
+
+<div align="center">
+
+![Proper color management](doc/img6.png)
 
 </div>
 
@@ -81,3 +91,7 @@ In order to be able to view images with vv, you need to use a terminal that impl
 Certain terminal features, such as Unicode fonts or true color support, are assumed to be always available.
 
 On some terminals (e.g. Konsole), images may appear pixelated when using a high DPI monitor. This problem is caused by implementation details of the terminal itself, and cannot be fixed by vv. Try a different terminal if this bothers you.
+
+### Animation
+
+Animated images in WebP format can be played. The text-only fallback mode is driven by vv outputting images on its own. The Kitty graphics protocol allows much more sophisticated control of the animation, in which case the image will continue to play even after vv exits. Note that support for Kitty animations in terminal implementations is currently very limited.
