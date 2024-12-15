@@ -23,8 +23,8 @@ public:
     [[nodiscard]] virtual bool IsHdr() { return false; }
 
     [[nodiscard]] virtual std::unique_ptr<Bitmap> Load() = 0;
-    [[nodiscard]] virtual std::unique_ptr<BitmapAnim> LoadAnim() { return nullptr; }
-    [[nodiscard]] virtual std::unique_ptr<BitmapHdr> LoadHdr() { return nullptr; }
+    [[nodiscard]] virtual std::unique_ptr<BitmapAnim> LoadAnim();
+    [[nodiscard]] virtual std::unique_ptr<BitmapHdr> LoadHdr();
 
 protected:
     std::shared_ptr<FileWrapper> m_file;

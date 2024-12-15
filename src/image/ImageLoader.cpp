@@ -15,6 +15,8 @@
 #include "TiffLoader.hpp"
 #include "WebpLoader.hpp"
 #include "util/Bitmap.hpp"
+#include "util/BitmapAnim.hpp"
+#include "util/BitmapHdr.hpp"
 #include "util/FileWrapper.hpp"
 #include "util/Home.hpp"
 #include "util/Logs.hpp"
@@ -33,6 +35,16 @@ static inline std::unique_ptr<ImageLoader> CheckImageLoader( const std::shared_p
 {
     auto loader = std::make_unique<T>( file );
     if( loader->IsValid() ) return loader;
+    return nullptr;
+}
+
+std::unique_ptr<BitmapAnim> ImageLoader::LoadAnim()
+{
+    return nullptr;
+}
+
+std::unique_ptr<BitmapHdr> ImageLoader::LoadHdr()
+{
     return nullptr;
 }
 
