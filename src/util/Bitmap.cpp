@@ -2,6 +2,7 @@
 #include <utility>
 
 #include <stb_image_resize2.h>
+#include <png.h>
 
 #include "Alloca.h"
 #include "Bitmap.hpp"
@@ -83,4 +84,33 @@ void Bitmap::FlipVertical()
         ptr1 += m_width * 4;
         ptr2 -= m_width * 4;
     }
+}
+
+void Bitmap::SavePng( const char* path ) const
+{
+    FILE* f = fopen( path, "wb" );
+    CheckPanic( f, "Failed to open %s for writing", path );
+
+    mclog( LogLevel::Info, "Saving PNG: %s", path );
+
+    png_structp png_ptr = png_create_write_struct( PNG_LIBPNG_VER_STRING, NULL, NULL, NULL );
+    png_infop info_ptr = png_create_info_struct( png_ptr );
+    setjmp( png_jmpbuf( png_ptr ) );
+    png_init_io( png_ptr, f );
+
+    png_set_IHDR( png_ptr, info_ptr, m_width, m_height, 8, PNG_COLOR_TYPE_RGB_ALPHA, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE );
+
+    png_write_info( png_ptr, info_ptr );
+
+    auto ptr = (uint32_t*)m_data;
+    for( int i=0; i<m_height; i++ )
+    {
+        png_write_rows( png_ptr, (png_bytepp)(&ptr), 1 );
+        ptr += m_width;
+    }
+
+    png_write_end( png_ptr, info_ptr );
+    png_destroy_write_struct( &png_ptr, &info_ptr );
+
+    fclose( f );
 }

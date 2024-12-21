@@ -30,10 +30,10 @@ concept ImageLoaderConcept = requires( T loader, const std::shared_ptr<FileWrapp
     { loader.Load() } -> std::convertible_to<std::unique_ptr<Bitmap>>;
 };
 
-template<ImageLoaderConcept T>
-static inline std::unique_ptr<ImageLoader> CheckImageLoader( const std::shared_ptr<FileWrapper>& file )
+template<ImageLoaderConcept T, typename... Args>
+static inline std::unique_ptr<ImageLoader> CheckImageLoader( const std::shared_ptr<FileWrapper>& file, Args&&... args )
 {
-    auto loader = std::make_unique<T>( file );
+    auto loader = std::make_unique<T>( file, std::forward<Args>( args )... );
     if( loader->IsValid() ) return loader;
     return nullptr;
 }
@@ -48,7 +48,7 @@ std::unique_ptr<BitmapHdr> ImageLoader::LoadHdr()
     return nullptr;
 }
 
-std::unique_ptr<ImageLoader> GetImageLoader( const char* filename )
+std::unique_ptr<ImageLoader> GetImageLoader( const char* filename, TaskDispatch* td )
 {
     ZoneScoped;
 
@@ -64,13 +64,13 @@ std::unique_ptr<ImageLoader> GetImageLoader( const char* filename )
     if( auto loader = CheckImageLoader<JpgLoader>( file ); loader ) return loader;
     if( auto loader = CheckImageLoader<JxlLoader>( file ); loader ) return loader;
     if( auto loader = CheckImageLoader<WebpLoader>( file ); loader ) return loader;
-    if( auto loader = CheckImageLoader<HeifLoader>( file ); loader ) return loader;
+    if( auto loader = CheckImageLoader<HeifLoader>( file, td ); loader ) return loader;
     if( auto loader = CheckImageLoader<PvrLoader>( file ); loader ) return loader;
     if( auto loader = CheckImageLoader<DdsLoader>( file ); loader ) return loader;
     if( auto loader = CheckImageLoader<StbImageLoader>( file ); loader ) return loader;
     if( auto loader = CheckImageLoader<RawLoader>( file ); loader ) return loader;
     if( auto loader = CheckImageLoader<TiffLoader>( file ); loader ) return loader;
-    if( auto loader = CheckImageLoader<ExrLoader>( file ); loader ) return loader;
+    if( auto loader = CheckImageLoader<ExrLoader>( file, td ); loader ) return loader;
     if( auto loader = CheckImageLoader<PcxLoader>( file ); loader ) return loader;
 
     mclog( LogLevel::Info, "Raster image loaders can't open %s", path.c_str() );

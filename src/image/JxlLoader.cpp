@@ -110,6 +110,11 @@ bool JxlLoader::IsHdr()
     return m_info.bits_per_sample > 8;
 }
 
+bool JxlLoader::PreferHdr()
+{
+    return true;
+}
+
 std::unique_ptr<Bitmap> JxlLoader::Load()
 {
     if( !m_dec && !Open() ) return nullptr;

@@ -10,6 +10,7 @@
 #include "util/BitmapHdr.hpp"
 #include "util/FileWrapper.hpp"
 #include "util/Panic.hpp"
+#include "util/TaskDispatch.hpp"
 
 class ExrStream : public Imf::IStream
 {
@@ -30,8 +31,9 @@ private:
     FILE* m_file;
 };
 
-ExrLoader::ExrLoader( std::shared_ptr<FileWrapper> file )
+ExrLoader::ExrLoader( std::shared_ptr<FileWrapper> file, TaskDispatch* td )
     : ImageLoader( std::move( file ) )
+    , m_td( td )
 {
     try
     {
@@ -102,7 +104,27 @@ std::unique_ptr<BitmapHdr> ExrLoader::LoadHdr()
         auto profileOut = cmsCreateRGBProfile( &white709, &primaries709, linear3 );
         auto transform = cmsCreateTransform( profileIn, TYPE_RGBA_HALF_FLT, profileOut, TYPE_RGBA_FLT, INTENT_PERCEPTUAL, 0 );
 
-        cmsDoTransform( transform, hdr.data(), bmp->Data(), width * height );
+        if( m_td )
+        {
+            auto src = hdr.data();
+            auto dst = bmp->Data();
+            auto sz = width * height;
+            while( sz > 0 )
+            {
+                auto chunk = std::min<size_t>( sz, 16 * 1024 );
+                m_td->Queue( [src, dst, chunk, transform] {
+                    cmsDoTransform( transform, src, dst, chunk );
+                } );
+                src += chunk;
+                dst += chunk * 4;
+                sz -= chunk;
+            }
+            m_td->Sync();
+        }
+        else
+        {
+            cmsDoTransform( transform, hdr.data(), bmp->Data(), width * height );
+        }
 
         cmsDeleteTransform( transform );
         cmsCloseProfile( profileIn );

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <libbase64.h>
 #include <format>
 #include <getopt.h>
@@ -20,6 +21,8 @@
 #include "util/Callstack.hpp"
 #include "util/Logs.hpp"
 #include "util/Panic.hpp"
+#include "util/TaskDispatch.hpp"
+#include "util/Tonemapper.hpp"
 #include "util/VectorImage.hpp"
 
 namespace {
@@ -34,6 +37,7 @@ void PrintHelp()
     printf( "  -G, --background [color]     Set background color to RRGGBB in hex\n" );
     printf( "  -g, --checkerboard           Use checkerboard background\n" );
     printf( "  -A, --noanim                 Disable animation\n" );
+    printf( "  -w, --write [file.png]       Write output to file\n" );
     printf( "  --help                       Print this help\n" );
 }
 
@@ -345,6 +349,7 @@ int main( int argc, char** argv )
         { "background", required_argument, nullptr, 'G' },
         { "checkerboard", no_argument, nullptr, 'g' },
         { "noanim", no_argument, nullptr, 'A' },
+        { "write", required_argument, nullptr, 'w' },
         { "help", no_argument, nullptr, OptHelp },
     };
 
@@ -352,16 +357,18 @@ int main( int argc, char** argv )
     {
         Kitty,
         Sixel,
-        Block
+        Block,
+        WriteFile
     };
 
     GfxMode gfxMode = GfxMode::Kitty;
     ScaleMode scale = ScaleMode::None;
     int bg = -2;
     bool disableAnimation = false;
+    const char* writeFn = nullptr;
 
     int opt;
-    while( ( opt = getopt_long( argc, argv, "debsf6G:gA", longOptions, nullptr ) ) != -1 )
+    while( ( opt = getopt_long( argc, argv, "debsf6G:gAw:", longOptions, nullptr ) ) != -1 )
     {
         switch (opt)
         {
@@ -393,6 +400,10 @@ int main( int argc, char** argv )
         case 'A':
             disableAnimation = true;
             break;
+        case 'w':
+            writeFn = optarg;
+            gfxMode = GfxMode::WriteFile;
+            break;
         default:
             printf( "\n" );
             [[fallthrough]];
@@ -409,23 +420,41 @@ int main( int argc, char** argv )
         return 1;
     }
 
+    const auto workerThreads = std::max( 1u, std::thread::hardware_concurrency() - 1 );
+    TaskDispatch td( workerThreads, "Worker" );
+
     const char* imageFile = argv[optind];
     std::unique_ptr<Bitmap> bitmap;
     std::unique_ptr<BitmapAnim> anim;
     std::unique_ptr<VectorImage> vectorImage;
 
-    auto imageThread = std::thread( [&bitmap, &anim, &vectorImage, imageFile, disableAnimation] {
-        auto loader = GetImageLoader( imageFile );
+    auto imageThread = std::thread( [&bitmap, &anim, &vectorImage, imageFile, disableAnimation, &td] {
+        auto loader = GetImageLoader( imageFile, &td );
         if( loader )
         {
             if( !disableAnimation && loader->IsAnimated() )
             {
                 anim = loader->LoadAnim();
             }
-            else if( loader->IsHdr() )
+            else if( loader->IsHdr() && loader->PreferHdr() )
             {
                 auto hdr = loader->LoadHdr();
-                bitmap = hdr->Tonemap();
+                bitmap = std::make_unique<Bitmap>( hdr->Width(), hdr->Height() );
+
+                auto src = hdr->Data();
+                auto dst = bitmap->Data();
+                size_t sz = hdr->Width() * hdr->Height();
+                while( sz > 0 )
+                {
+                    const auto chunk = std::min( sz, size_t( 16 * 1024 ) );
+                    td.Queue( [src, dst, chunk] {
+                        ToneMap::PbrNeutral( (uint32_t*)dst, src, chunk );
+                    } );
+                    src += chunk * 4;
+                    dst += chunk * 4;
+                    sz -= chunk;
+                }
+                td.Sync();
             }
             else
             {
@@ -456,7 +485,7 @@ int main( int argc, char** argv )
     mclog( LogLevel::Info, "Terminal size: %dx%d", ws.ws_col, ws.ws_row );
 
     int cw, ch;
-    if( gfxMode != GfxMode::Block )
+    if( gfxMode != GfxMode::Block && gfxMode != GfxMode::WriteFile )
     {
         if( !OpenTerminal() )
         {
@@ -650,6 +679,28 @@ int main( int argc, char** argv )
             if( !UploadKittyImage( *bitmap, "a=T" ) ) return 1;
             if( bitmap->Width() < col ) printf( "\n" );
         }
+    }
+    else if( gfxMode == GfxMode::WriteFile )
+    {
+        std::shared_ptr<Bitmap> img;
+        if( anim )
+        {
+            img = anim->GetFrame( 0 ).bmp;
+        }
+        else if( bitmap )
+        {
+            img.reset( bitmap.release() );
+        }
+        else
+        {
+            CheckPanic( vectorImage, "No image data" );
+            img = vectorImage->Rasterize( vectorImage->Width(), vectorImage->Height() );
+        }
+
+        if( bg >= 0 ) FillBackground( *img, bg );
+        else if( bg == -1 ) FillCheckerboard( *img );
+
+        img->SavePng( writeFn );
     }
     else
     {

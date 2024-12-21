@@ -14,6 +14,7 @@ public:
 
     [[nodiscard]] bool IsValid() const override;
     [[nodiscard]] bool IsHdr() override;
+    [[nodiscard]] bool PreferHdr() override;
 
     [[nodiscard]] std::unique_ptr<Bitmap> Load() override;
     [[nodiscard]] std::unique_ptr<BitmapHdr> LoadHdr() override;

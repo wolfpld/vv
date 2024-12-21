@@ -22,6 +22,8 @@ public:
     [[nodiscard]] uint8_t* Data() { return m_data; }
     [[nodiscard]] const uint8_t* Data() const { return m_data; }
 
+    void SavePng( const char* path ) const;
+
 private:
     uint32_t m_width;
     uint32_t m_height;

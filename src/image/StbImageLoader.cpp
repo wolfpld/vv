@@ -30,6 +30,11 @@ bool StbImageLoader::IsHdr()
     return m_hdr;
 }
 
+bool StbImageLoader::PreferHdr()
+{
+    return true;
+}
+
 std::unique_ptr<Bitmap> StbImageLoader::Load()
 {
     CheckPanic( m_valid, "Invalid stb_image file" );

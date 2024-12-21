@@ -5,11 +5,15 @@
 #include <string.h>
 
 #include "HeifLoader.hpp"
+#include "util/Alloca.h"
 #include "util/Bitmap.hpp"
 #include "util/BitmapHdr.hpp"
 #include "util/FileBuffer.hpp"
 #include "util/FileWrapper.hpp"
 #include "util/Panic.hpp"
+#include "util/Simd.hpp"
+#include "util/TaskDispatch.hpp"
+#include "util/Tonemapper.hpp"
 
 namespace
 {
@@ -43,15 +47,130 @@ float Hlg( float E, float Y )
 
     return std::pow( Y * invalpha, g ) * E * invalpha;
 }
+
+#if defined __SSE4_1__ && defined __FMA__
+void LinearizePq128( float* ptr, int sz )
+{
+    while( sz > 0 )
+    {
+        __m128 px0 = _mm_loadu_ps( ptr );
+        __m128 px1 = _mm_max_ps( px0, _mm_setzero_ps() );
+        __m128 Nm2 = _mm_pow_ps( px1, _mm_set1_ps( 1.f / 78.84375f ) );
+
+        __m128 px2 = _mm_sub_ps( Nm2, _mm_set1_ps( 0.8359375f ) );
+        __m128 px3 = _mm_max_ps( px2, _mm_setzero_ps() );
+
+        __m128 px4 = _mm_fnmadd_ps( _mm_set1_ps( 18.6875f ), Nm2, _mm_set1_ps( 18.8515625f ) );
+        __m128 px5 = _mm_div_ps( px3, px4 );
+
+        __m128 px6 = _mm_pow_ps( px5, _mm_set1_ps( 1.f / 0.1593017578125f ) );
+        __m128 ret = _mm_mul_ps( px6, _mm_set1_ps( 10000.f / 255.f ) );
+
+        __m128 b = _mm_blend_ps( ret, px0, 0x8 );
+        _mm_storeu_ps( ptr, b );
+
+        ptr += 4;
+        sz--;
+    }
 }
 
-HeifLoader::HeifLoader( std::shared_ptr<FileWrapper> file )
+#  if defined __AVX2__
+void LinearizePq256( float* ptr, int sz )
+{
+    while( sz > 1 )
+    {
+        __m256 px0 = _mm256_loadu_ps( ptr );
+        __m256 px1 = _mm256_max_ps( px0, _mm256_setzero_ps() );
+        __m256 Nm2 = _mm256_pow_ps( px1, _mm256_set1_ps( 1.f / 78.84375f ) );
+
+        __m256 px2 = _mm256_sub_ps( Nm2, _mm256_set1_ps( 0.8359375f ) );
+        __m256 px3 = _mm256_max_ps( px2, _mm256_setzero_ps() );
+
+        __m256 px4 = _mm256_fnmadd_ps( _mm256_set1_ps( 18.6875f ), Nm2, _mm256_set1_ps( 18.8515625f ) );
+        __m256 px5 = _mm256_div_ps( px3, px4 );
+
+        __m256 px6 = _mm256_pow_ps( px5, _mm256_set1_ps( 1.f / 0.1593017578125f ) );
+        __m256 ret = _mm256_mul_ps( px6, _mm256_set1_ps( 10000.f / 255.f ) );
+
+        __m256 b = _mm256_blend_ps( ret, px0, 0x88 );
+        _mm256_storeu_ps( ptr, b );
+
+        ptr += 8;
+        sz -= 2;
+    }
+}
+#  endif
+
+#  if defined __AVX512F__
+void LinearizePq512( float* ptr, int sz )
+{
+    while( sz > 3 )
+    {
+        __m512 px0 = _mm512_loadu_ps( ptr );
+        __m512 px1 = _mm512_max_ps( px0, _mm512_setzero_ps() );
+        __m512 Nm2 = _mm512_pow_ps( px1, _mm512_set1_ps( 1.f / 78.84375f ) );
+
+        __m512 px2 = _mm512_sub_ps( Nm2, _mm512_set1_ps( 0.8359375f ) );
+        __m512 px3 = _mm512_max_ps( px2, _mm512_setzero_ps() );
+
+        __m512 px4 = _mm512_fnmadd_ps( _mm512_set1_ps( 18.6875f ), Nm2, _mm512_set1_ps( 18.8515625f ) );
+        __m512 px5 = _mm512_div_ps( px3, px4 );
+
+        __m512 px6 = _mm512_pow_ps( px5, _mm512_set1_ps( 1.f / 0.1593017578125f ) );
+        __m512 ret = _mm512_mul_ps( px6, _mm512_set1_ps( 10000.f / 255.f ) );
+
+        __m512 b = _mm512_mask_blend_ps( 0x8888, ret, px0 );
+        _mm512_storeu_ps( ptr, b );
+
+        ptr += 16;
+        sz -= 4;
+    }
+}
+#  endif
+
+void LinearizePq( float* ptr, int sz )
+{
+#  ifdef __AVX512F__
+    LinearizePq512( ptr, sz );
+    if( (sz & 3) == 0 ) return;
+    ptr += ( sz & ~3 ) * 4;
+    sz &= 3;
+#  endif
+#  ifdef __AVX2__
+    LinearizePq256( ptr, sz );
+    if( (sz & 1) == 0 ) return;
+    ptr += ( sz & ~1 ) * 4;
+    sz &= 1;
+#  endif
+    LinearizePq128( ptr, sz );
+}
+#else
+void LinearizePq( float* ptr, int sz )
+{
+    for( int i=0; i<sz; i++ )
+    {
+        ptr[0] = Pq( ptr[0] );
+        ptr[1] = Pq( ptr[1] );
+        ptr[2] = Pq( ptr[2] );
+
+        ptr += 4;
+    }
+}
+#endif
+}
+
+HeifLoader::HeifLoader( std::shared_ptr<FileWrapper> file, TaskDispatch* td )
     : ImageLoader( std::move( file ) )
     , m_valid( false )
     , m_ctx( nullptr )
     , m_handle( nullptr )
+    , m_image( nullptr )
     , m_nclx( nullptr )
     , m_iccData( nullptr )
+    , m_profileIn( nullptr )
+    , m_profileOut( nullptr )
+    , m_transform( nullptr )
+    , m_td( td )
 {
     fseek( *m_file, 0, SEEK_SET );
     uint8_t hdr[12];
@@ -64,7 +183,11 @@ HeifLoader::HeifLoader( std::shared_ptr<FileWrapper> file )
 
 HeifLoader::~HeifLoader()
 {
+    if( m_transform ) cmsDeleteTransform( m_transform );
+    if( m_profileOut ) cmsCloseProfile( m_profileOut );
+    if( m_profileIn ) cmsCloseProfile( m_profileIn );
     if( m_iccData ) delete[] m_iccData;
+    if( m_image ) heif_image_release( m_image );
     if( m_handle ) heif_image_handle_release( m_handle );
     if( m_ctx ) heif_context_free( m_ctx );
 }
@@ -98,28 +221,89 @@ std::unique_ptr<Bitmap> HeifLoader::Load()
         }
         else
         {
-            return LoadWithIccProfile();
+            if( !SetupDecode( false ) ) return nullptr;
+            auto tmp = std::make_unique<BitmapHdr>( m_width, m_height );
+            LoadYCbCr( tmp->Data(), m_width * m_height, 0 );
+            ConvertYCbCrToRGB( tmp->Data(), m_width * m_height );
+
+            auto bmp = std::make_unique<Bitmap>( m_width, m_height );
+            cmsDoTransform( m_transform, tmp->Data(), bmp->Data(), m_width * m_height );
+
+            return bmp;
         }
     }
     else
     {
-        std::unique_ptr<BitmapHdr> hdr = LoadHdr();
-        return hdr->Tonemap();
+        if( m_td )
+        {
+            if( !SetupDecode( true ) ) return nullptr;
+
+            auto bmp = std::make_unique<Bitmap>( m_width, m_height );
+            auto out = (uint32_t*)bmp->Data();
+
+            size_t offset = 0;
+            size_t sz = m_width * m_height;
+            while( sz > 0 )
+            {
+                const auto chunk = std::min( sz, size_t( 16 * 1024 ) );
+                m_td->Queue( [this, out, chunk, offset] {
+                    auto ptr = (float*)alloca( chunk * 4 * sizeof( float ) );
+                    LoadYCbCr( ptr, chunk, offset );
+                    ConvertYCbCrToRGB( ptr, chunk );
+                    if( m_transform ) cmsDoTransform( m_transform, ptr, ptr, chunk );
+                    ApplyTransfer( ptr, chunk );
+                    ToneMap::PbrNeutral( out, ptr, chunk );
+                } );
+                out += chunk;
+                sz -= chunk;
+                offset += chunk;
+            }
+            m_td->Sync();
+            return bmp;
+        }
+        else
+        {
+            std::unique_ptr<BitmapHdr> hdr = LoadHdr();
+            return hdr->Tonemap();
+        }
     }
 }
 
 std::unique_ptr<BitmapHdr> HeifLoader::LoadHdr()
 {
     if( !m_buf && !Open() ) return nullptr;
+    if( !SetupDecode( true ) ) return nullptr;
 
-    if( !m_iccData )
+    auto bmp = std::make_unique<BitmapHdr>( m_width, m_height );
+    if( m_td )
     {
-        return LoadHdrNoProfile();
+        auto ptr = bmp->Data();
+        size_t offset = 0;
+        size_t sz = m_width * m_height;
+        while( sz > 0 )
+        {
+            const auto chunk = std::min( sz, size_t( 16 * 1024 ) );
+            m_td->Queue( [this, ptr, chunk, offset] {
+                LoadYCbCr( ptr, chunk, offset );
+                ConvertYCbCrToRGB( ptr, chunk );
+                if( m_transform ) cmsDoTransform( m_transform, ptr, ptr, chunk );
+                ApplyTransfer( ptr, chunk );
+            } );
+            ptr += chunk * 4;
+            sz -= chunk;
+            offset += chunk;
+        }
+        m_td->Sync();
     }
     else
     {
-        return LoadHdrWithIccProfile();
+        LoadYCbCr( bmp->Data(), m_width * m_height, 0 );
+        ConvertYCbCrToRGB( bmp->Data(), m_width * m_height );
+        if( m_transform ) cmsDoTransform( m_transform, bmp->Data(), bmp->Data(), m_width * m_height );
+        ApplyTransfer( bmp->Data(), m_width * m_height );
     }
+
+    return bmp;
 }
 
 bool HeifLoader::Open()
@@ -153,6 +337,114 @@ bool HeifLoader::Open()
 
     m_width = heif_image_handle_get_width( m_handle );
     m_height = heif_image_handle_get_height( m_handle );
+
+    return true;
+}
+
+bool HeifLoader::SetupDecode( bool hdr )
+{
+    auto err = heif_decode_image( m_handle, &m_image, heif_colorspace_YCbCr, heif_chroma_444, nullptr );
+    if( err.code != heif_error_Ok ) return false;
+
+    if( !m_nclx )
+    {
+        auto err = heif_image_get_nclx_color_profile( m_image, &m_nclx );
+        if( err.code == heif_error_Color_profile_does_not_exist ) mclog( LogLevel::Info, "HEIF: No image-level nclx color profile found" );
+    }
+
+    int strideY, strideCb, strideCr, strideA;
+    m_planeY  = heif_image_get_plane_readonly( m_image, heif_channel_Y, &strideY );
+    m_planeCb = heif_image_get_plane_readonly( m_image, heif_channel_Cb, &strideCb );
+    m_planeCr = heif_image_get_plane_readonly( m_image, heif_channel_Cr, &strideCr );
+    m_planeA  = heif_image_get_plane_readonly( m_image, heif_channel_Alpha, &strideA );
+    CheckPanic( strideY == strideCb && strideY == strideCr, "Decoded output is not 444" );
+    m_stride = strideY;
+
+    if( !m_planeY || !m_planeCb || !m_planeCr ) return false;
+
+    const auto bppY = heif_image_get_bits_per_pixel_range( m_image, heif_channel_Y );
+    const auto bppCb = heif_image_get_bits_per_pixel_range( m_image, heif_channel_Cb );
+    const auto bppCr = heif_image_get_bits_per_pixel_range( m_image, heif_channel_Cr );
+    CheckPanic( bppY == bppCb && bppY == bppCr, "Decoded output has mixed bit width" );
+
+    m_bpp = bppY;
+    m_bppDiv = 1.f / ( ( 1 << bppY ) - 1 );
+    mclog( LogLevel::Info, "HEIF: %d bpp", bppY );
+
+    if( bppY > 8 ) m_stride /= 2;
+
+    m_matrix = Conversion::BT601;
+    if( m_nclx )
+    {
+        switch( m_nclx->matrix_coefficients )
+        {
+        case heif_matrix_coefficients_RGB_GBR:
+            m_matrix = Conversion::GBR;
+            mclog( LogLevel::Info, "HEIF: Matrix coefficients GBR" );
+            break;
+        case heif_matrix_coefficients_ITU_R_BT_709_5:
+            m_matrix = Conversion::BT709;
+            mclog( LogLevel::Info, "HEIF: Matrix coefficients BT.709" );
+            break;
+        case heif_matrix_coefficients_unspecified:      // see https://github.com/AOMediaCodec/libavif/wiki/CICP
+        case heif_matrix_coefficients_ITU_R_BT_470_6_System_B_G:
+        case heif_matrix_coefficients_ITU_R_BT_601_6:
+            m_matrix = Conversion::BT601;
+            mclog( LogLevel::Info, "HEIF: Matrix coefficients BT.601" );
+            break;
+        case heif_matrix_coefficients_ITU_R_BT_2020_2_non_constant_luminance:
+        case heif_matrix_coefficients_ITU_R_BT_2020_2_constant_luminance:
+            m_matrix = Conversion::BT2020;
+            mclog( LogLevel::Info, "HEIF: Matrix coefficients BT.2020" );
+            break;
+        default:
+            mclog( LogLevel::Error, "HEIF: Matrix coefficients %d not implemented, defaulting to BT.601", m_nclx->matrix_coefficients );
+            break;
+        }
+    }
+
+    if( m_iccData )
+    {
+        m_profileIn = cmsOpenProfileFromMem( m_iccData, m_iccSize );
+        int outType;
+        if( hdr )
+        {
+            cmsToneCurve* linear = cmsBuildGamma( nullptr, 1 );
+            cmsToneCurve* linear3[3] = { linear, linear, linear };
+            m_profileOut = cmsCreateRGBProfile( &white709, &primaries709, linear3 );
+            outType = TYPE_RGBA_FLT;
+            cmsFreeToneCurve( linear );
+        }
+        else
+        {
+            m_profileOut = cmsCreate_sRGBProfile();
+            outType = TYPE_RGBA_8;
+        }
+        m_transform = cmsCreateTransform( m_profileIn, TYPE_RGBA_FLT, m_profileOut, outType, INTENT_PERCEPTUAL, cmsFLAGS_COPY_ALPHA );
+    }
+    else
+    {
+        CheckPanic( m_nclx, "No color profile code path should be taken." );
+        CheckPanic( hdr, "No color profile code path should be taken." );
+
+        if( m_nclx->color_primaries != heif_color_primaries_ITU_R_BT_709_5 )
+        {
+            cmsToneCurve* linear = cmsBuildGamma( nullptr, 1 );
+            cmsToneCurve* linear3[3] = { linear, linear, linear };
+
+            const cmsCIExyY white = { m_nclx->color_primary_white_x, m_nclx->color_primary_white_y, 1 };
+            const cmsCIExyYTRIPLE primaries = {
+                { m_nclx->color_primary_red_x, m_nclx->color_primary_red_y, 1 },
+                { m_nclx->color_primary_green_x, m_nclx->color_primary_green_y, 1 },
+                { m_nclx->color_primary_blue_x, m_nclx->color_primary_blue_y, 1 }
+            };
+
+            m_profileIn = cmsCreateRGBProfile( &white, &primaries, linear3 );
+            m_profileOut = cmsCreateRGBProfile( &white709, &primaries709, linear3 );
+            cmsFreeToneCurve( linear );
+            m_transform = cmsCreateTransform( m_profileIn, TYPE_RGBA_FLT, m_profileOut, TYPE_RGBA_FLT, INTENT_PERCEPTUAL, cmsFLAGS_COPY_ALPHA );
+        }
+    }
 
     return true;
 }
@@ -191,236 +483,94 @@ std::unique_ptr<Bitmap> HeifLoader::LoadNoProfile()
     return bmp;
 }
 
-std::unique_ptr<Bitmap> HeifLoader::LoadWithIccProfile()
+template<typename T>
+static inline void ProcessYCbCrAlpha( float* ptr, const T* srcY, const T* srcCb, const T* srcCr, const T* srcA, size_t sz, size_t offset, size_t width, size_t stride, float div )
 {
-    auto tmp = LoadYCbCr();
-    if( !tmp ) return nullptr;
-    ConvertYCbCrToRGB( tmp );
+    const auto gap = stride - width;
 
-    auto profileIn = cmsOpenProfileFromMem( m_iccData, m_iccSize );
-    auto profileOut = cmsCreate_sRGBProfile();
-    auto transform = cmsCreateTransform( profileIn, TYPE_RGBA_FLT, profileOut, TYPE_RGBA_8, INTENT_PERCEPTUAL, cmsFLAGS_COPY_ALPHA );
+    const int py = offset / width;
+    int px = offset % width;
 
-    auto bmp = std::make_unique<Bitmap>( m_width, m_height );
-    cmsDoTransform( transform, tmp->Data(), bmp->Data(), m_width * m_height );
+    srcY += py * stride + px;
+    srcCb += py * stride + px;
+    srcCr += py * stride + px;
+    srcA += py * stride + px;
 
-    cmsDeleteTransform( transform );
-    cmsCloseProfile( profileOut );
-    cmsCloseProfile( profileIn );
-
-    return bmp;
-}
-
-std::unique_ptr<BitmapHdr> HeifLoader::LoadHdrNoProfile()
-{
-    CheckPanic( m_nclx, "No nclx color profile found" );
-
-    auto bmp = LoadYCbCr();
-    if( !bmp ) return nullptr;
-    ConvertYCbCrToRGB( bmp );
-
-    if( m_nclx->color_primaries != heif_color_primaries_ITU_R_BT_709_5 )
+    for(;;)
     {
-        cmsToneCurve* linear = cmsBuildGamma( nullptr, 1 );
-        cmsToneCurve* linear3[3] = { linear, linear, linear };
-
-        const cmsCIExyY white = { m_nclx->color_primary_white_x, m_nclx->color_primary_white_y, 1 };
-        const cmsCIExyYTRIPLE primaries = {
-            { m_nclx->color_primary_red_x, m_nclx->color_primary_red_y, 1 },
-            { m_nclx->color_primary_green_x, m_nclx->color_primary_green_y, 1 },
-            { m_nclx->color_primary_blue_x, m_nclx->color_primary_blue_y, 1 }
-        };
-
-        auto profileIn = cmsCreateRGBProfile( &white, &primaries, linear3 );
-        auto profileOut = cmsCreateRGBProfile( &white709, &primaries709, linear3 );
-        auto transform = cmsCreateTransform( profileIn, TYPE_RGBA_FLT, profileOut, TYPE_RGBA_FLT, INTENT_PERCEPTUAL, cmsFLAGS_COPY_ALPHA );
-
-        auto corrected = std::make_unique<BitmapHdr>( m_width, m_height );
-        cmsDoTransform( transform, bmp->Data(), corrected->Data(), m_width * m_height );
-        std::swap( bmp, corrected );
-
-        cmsDeleteTransform( transform );
-        cmsCloseProfile( profileOut );
-        cmsCloseProfile( profileIn );
-        cmsFreeToneCurve( linear );
-    }
-
-    ApplyTransfer( bmp );
-    return bmp;
-}
-
-std::unique_ptr<BitmapHdr> HeifLoader::LoadHdrWithIccProfile()
-{
-    CheckPanic( m_nclx, "No nclx color profile found" );
-
-    auto bmp = LoadYCbCr();
-    if( !bmp ) return nullptr;
-    ConvertYCbCrToRGB( bmp );
-
-    cmsToneCurve* linear = cmsBuildGamma( nullptr, 1 );
-    cmsToneCurve* linear3[3] = { linear, linear, linear };
-
-    auto profileIn = cmsOpenProfileFromMem( m_iccData, m_iccSize );
-    auto profileOut = cmsCreateRGBProfile( &white709, &primaries709, linear3 );
-    auto transform = cmsCreateTransform( profileIn, TYPE_RGBA_FLT, profileOut, TYPE_RGBA_FLT, INTENT_PERCEPTUAL, cmsFLAGS_COPY_ALPHA );
-
-    auto corrected = std::make_unique<BitmapHdr>( m_width, m_height );
-    cmsDoTransform( transform, bmp->Data(), corrected->Data(), m_width * m_height );
-
-    cmsDeleteTransform( transform );
-    cmsCloseProfile( profileOut );
-    cmsCloseProfile( profileIn );
-    cmsFreeToneCurve( linear );
-
-    ApplyTransfer( bmp );
-    return corrected;
-}
-
-std::unique_ptr<BitmapHdr> HeifLoader::LoadYCbCr()
-{
-    heif_image* img;
-    auto err = heif_decode_image( m_handle, &img, heif_colorspace_YCbCr, heif_chroma_444, nullptr );
-    if( err.code != heif_error_Ok ) return nullptr;
-
-    if( !m_nclx )
-    {
-        auto err = heif_image_get_nclx_color_profile( img, &m_nclx );
-        if( err.code == heif_error_Color_profile_does_not_exist ) mclog( LogLevel::Info, "HEIF: No image-level nclx color profile found" );
-    }
-
-    int strideY, strideCb, strideCr, strideA;
-    auto srcY = heif_image_get_plane_readonly( img, heif_channel_Y, &strideY );
-    auto srcCb = heif_image_get_plane_readonly( img, heif_channel_Cb, &strideCb );
-    auto srcCr = heif_image_get_plane_readonly( img, heif_channel_Cr, &strideCr );
-    auto srcA = heif_image_get_plane_readonly( img, heif_channel_Alpha, &strideA );
-    CheckPanic( strideY == strideCb && strideY == strideCr, "Decoded output is not 444" );
-
-    if( !srcY || !srcCb || !srcCr )
-    {
-        heif_image_release( img );
-        return nullptr;
-    }
-
-    const auto bppY = heif_image_get_bits_per_pixel_range( img, heif_channel_Y );
-    const auto bppCb = heif_image_get_bits_per_pixel_range( img, heif_channel_Cb );
-    const auto bppCr = heif_image_get_bits_per_pixel_range( img, heif_channel_Cr );
-    CheckPanic( bppY == bppCb && bppY == bppCr, "Decoded output has mixed bit width" );
-
-    const float div = 1.f / ( ( 1 << bppY ) - 1 );
-    mclog( LogLevel::Info, "HEIF: %d bpp", bppY );
-
-    auto bmp = std::make_unique<BitmapHdr>( m_width, m_height );
-    auto dst = bmp->Data();
-    if( srcA )
-    {
-        if( bppY > 8 )
+        auto line = std::min( sz, size_t( width - px ) );
+        sz -= line;
+        while( line-- )
         {
-            auto srcY16 = (uint16_t*)srcY;
-            auto srcCb16 = (uint16_t*)srcCb;
-            auto srcCr16 = (uint16_t*)srcCr;
-            auto srcA16 = (uint16_t*)srcA;
+            *ptr++ = float(*srcY++) * div;
+            *ptr++ = float(*srcCb++) * div - 0.5f;
+            *ptr++ = float(*srcCr++) * div - 0.5f;
+            *ptr++ = float(*srcA++) * div;
+        }
+        if( sz == 0 ) break;
+        px = 0;
 
-            strideY /= 2;
-            strideCb /= 2;
-            strideCr /= 2;
-            strideA /= 2;
+        srcY += gap;
+        srcCb += gap;
+        srcCr += gap;
+        srcA += gap;
+    }
+}
 
-            for( int i=0; i<m_height; i++ )
-            {
-                for( int j=0; j<m_width; j++ )
-                {
-                    const auto Y = float(*srcY16++) * div;
-                    const auto Cb = float(*srcCb16++) * div - 0.5f;
-                    const auto Cr = float(*srcCr16++) * div - 0.5f;
-                    const auto a = float(*srcA16++) * div;
+template<typename T>
+static inline void ProcessYCbCr( float* ptr, const T* srcY, const T* srcCb, const T* srcCr, size_t sz, size_t offset, size_t width, size_t stride, float div )
+{
+    const auto gap = stride - width;
 
-                    *dst++ = Y;
-                    *dst++ = Cb;
-                    *dst++ = Cr;
-                    *dst++ = a;
-                }
+    const int py = offset / width;
+    int px = offset % width;
 
-                srcY16 += strideY - m_width;
-                srcCb16 += strideCb - m_width;
-                srcCr16 += strideCr - m_width;
-                srcA16 += strideA - m_width;
-            }
+    srcY += py * stride + px;
+    srcCb += py * stride + px;
+    srcCr += py * stride + px;
+
+    for(;;)
+    {
+        auto line = std::min( sz, size_t( width - px ) );
+        sz -= line;
+        while( line-- )
+        {
+            *ptr++ = float(*srcY++) * div;
+            *ptr++ = float(*srcCb++) * div - 0.5f;
+            *ptr++ = float(*srcCr++) * div - 0.5f;
+            *ptr++ = 1.f;
+        }
+        if( sz == 0 ) break;
+        px = 0;
+
+        srcY += gap;
+        srcCb += gap;
+        srcCr += gap;
+    }
+}
+
+void HeifLoader::LoadYCbCr( float* ptr, size_t sz, size_t offset )
+{
+    if( m_planeA )
+    {
+        if( m_bpp > 8 )
+        {
+            ProcessYCbCrAlpha( ptr, (uint16_t*)m_planeY, (uint16_t*)m_planeCb, (uint16_t*)m_planeCr, (uint16_t*)m_planeA, sz, offset, m_width, m_stride, m_bppDiv );
         }
         else
         {
-            for( int i=0; i<m_height; i++ )
-            {
-                for( int j=0; j<m_width; j++ )
-                {
-                    const auto Y = float(*srcY++) * div;
-                    const auto Cb = float(*srcCb++) * div - 0.5f;
-                    const auto Cr = float(*srcCr++) * div - 0.5f;
-                    const auto a = float(*srcA++) * div;
-
-                    *dst++ = Y;
-                    *dst++ = Cb;
-                    *dst++ = Cr;
-                    *dst++ = a;
-                }
-
-                srcY += strideY - m_width;
-                srcCb += strideCb - m_width;
-                srcCr += strideCr - m_width;
-                srcA += strideA - m_width;
-            }
+            ProcessYCbCrAlpha( ptr, m_planeY, m_planeCb, m_planeCr, m_planeA, sz, offset, m_width, m_stride, m_bppDiv );
         }
     }
     else
     {
-        if( bppY > 8 )
+        if( m_bpp > 8 )
         {
-            auto srcY16 = (uint16_t*)srcY;
-            auto srcCb16 = (uint16_t*)srcCb;
-            auto srcCr16 = (uint16_t*)srcCr;
-
-            strideY /= 2;
-            strideCb /= 2;
-            strideCr /= 2;
-
-            for( int i=0; i<m_height; i++ )
-            {
-                for( int j=0; j<m_width; j++ )
-                {
-                    const auto Y = float(*srcY16++) * div;
-                    const auto Cb = float(*srcCb16++) * div - 0.5f;
-                    const auto Cr = float(*srcCr16++) * div - 0.5f;
-
-                    *dst++ = Y;
-                    *dst++ = Cb;
-                    *dst++ = Cr;
-                    *dst++ = 1.f;
-                }
-
-                srcY16 += strideY - m_width;
-                srcCb16 += strideCb - m_width;
-                srcCr16 += strideCr - m_width;
-            }
+            ProcessYCbCr( ptr, (uint16_t*)m_planeY, (uint16_t*)m_planeCb, (uint16_t*)m_planeCr, sz, offset, m_width, m_stride, m_bppDiv );
         }
         else
         {
-            for( int i=0; i<m_height; i++ )
-            {
-                for( int j=0; j<m_width; j++ )
-                {
-                    const auto Y = float(*srcY++) * div;
-                    const auto Cb = float(*srcCb++) * div - 0.5f;
-                    const auto Cr = float(*srcCr++) * div - 0.5f;
-
-                    *dst++ = Y;
-                    *dst++ = Cb;
-                    *dst++ = Cr;
-                    *dst++ = 1.f;
-                }
-
-                srcY += strideY - m_width;
-                srcCb += strideCb - m_width;
-                srcCr += strideCr - m_width;
-            }
+            ProcessYCbCr( ptr, m_planeY, m_planeCb, m_planeCr, sz, offset, m_width, m_stride, m_bppDiv );
         }
     }
 
@@ -432,8 +582,6 @@ std::unique_ptr<BitmapHdr> HeifLoader::LoadYCbCr()
         constexpr float scale = 255.f / 219.f;
         constexpr float offset = 16.f / 255.f;
 
-        auto ptr = bmp->Data();
-        auto sz = bmp->Width() * bmp->Height();
         do
         {
             ptr[0] = ( ptr[0] - offset ) * scale;
@@ -441,54 +589,12 @@ std::unique_ptr<BitmapHdr> HeifLoader::LoadYCbCr()
         }
         while( --sz );
     }
-
-    return bmp;
 }
 
-void HeifLoader::ConvertYCbCrToRGB( const std::unique_ptr<BitmapHdr>& bmp )
+void HeifLoader::ConvertYCbCrToRGB( float* ptr, size_t sz )
 {
-    enum class Conversion
+    if( m_matrix == Conversion::GBR )
     {
-        GBR,
-        BT601,
-        BT709,
-        BT2020
-    };
-
-    auto cs = Conversion::BT601;
-    if( m_nclx )
-    {
-        switch( m_nclx->matrix_coefficients )
-        {
-        case heif_matrix_coefficients_RGB_GBR:
-            cs = Conversion::GBR;
-            mclog( LogLevel::Info, "HEIF: Matrix coefficients GBR" );
-            break;
-        case heif_matrix_coefficients_ITU_R_BT_709_5:
-            cs = Conversion::BT709;
-            mclog( LogLevel::Info, "HEIF: Matrix coefficients BT.709" );
-            break;
-        case heif_matrix_coefficients_unspecified:      // see https://github.com/AOMediaCodec/libavif/wiki/CICP
-        case heif_matrix_coefficients_ITU_R_BT_470_6_System_B_G:
-        case heif_matrix_coefficients_ITU_R_BT_601_6:
-            cs = Conversion::BT601;
-            mclog( LogLevel::Info, "HEIF: Matrix coefficients BT.601" );
-            break;
-        case heif_matrix_coefficients_ITU_R_BT_2020_2_non_constant_luminance:
-        case heif_matrix_coefficients_ITU_R_BT_2020_2_constant_luminance:
-            cs = Conversion::BT2020;
-            mclog( LogLevel::Info, "HEIF: Matrix coefficients BT.2020" );
-            break;
-        default:
-            mclog( LogLevel::Error, "HEIF: Matrix coefficients %d not implemented, defaulting to BT.601", m_nclx->matrix_coefficients );
-            break;
-        }
-    }
-
-    if( cs == Conversion::GBR )
-    {
-        auto ptr = bmp->Data();
-        auto sz = bmp->Width() * bmp->Height();
         do
         {
             const auto g = ptr[0];
@@ -506,7 +612,7 @@ void HeifLoader::ConvertYCbCrToRGB( const std::unique_ptr<BitmapHdr>& bmp )
     else
     {
         float a, b, c, d;
-        switch( cs )
+        switch( m_matrix )
         {
         case Conversion::BT601:
             a = 1.402f;
@@ -531,8 +637,6 @@ void HeifLoader::ConvertYCbCrToRGB( const std::unique_ptr<BitmapHdr>& bmp )
             break;
         }
 
-        auto ptr = bmp->Data();
-        auto sz = bmp->Width() * bmp->Height();
         do
         {
             const auto Y = ptr[0];
@@ -553,29 +657,18 @@ void HeifLoader::ConvertYCbCrToRGB( const std::unique_ptr<BitmapHdr>& bmp )
     }
 }
 
-void HeifLoader::ApplyTransfer( const std::unique_ptr<BitmapHdr>& bmp )
+void HeifLoader::ApplyTransfer( float* ptr, size_t sz )
 {
     CheckPanic( m_nclx, "No nclx color profile found" );
-
-    auto ptr = bmp->Data();
-    auto sz = bmp->Width() * bmp->Height();
 
     switch( m_nclx->transfer_characteristics )
     {
     case heif_transfer_characteristic_ITU_R_BT_2100_0_PQ:
-        mclog( LogLevel::Info, "HEIF: Applying PQ transfer function" );
-        do
-        {
-            ptr[0] = Pq( ptr[0] );
-            ptr[1] = Pq( ptr[1] );
-            ptr[2] = Pq( ptr[2] );
-
-            ptr += 4;
-        }
-        while( --sz );
+        //mclog( LogLevel::Info, "HEIF: Applying PQ transfer function" );
+        LinearizePq( ptr, sz );
         break;
     case heif_transfer_characteristic_ITU_R_BT_2100_0_HLG:
-        mclog( LogLevel::Info, "HEIF: Applying HLG transfer function" );
+        //mclog( LogLevel::Info, "HEIF: Applying HLG transfer function" );
         do
         {
             const auto r = ptr[0];

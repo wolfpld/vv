@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.29)
 
 option(TRACY_ENABLE "Enable Tracy" OFF)
 set(BUILD_SHARED_LIBS OFF)
+option(MARCH_NATIVE "Enable -march=native" ON)
 
 set(CMAKE_CXX_STANDARD 20)
 
@@ -9,6 +10,7 @@ project(ModernCore
     LANGUAGES C CXX
 )
 
+include(CheckCompilerFlag)
 include(FindPkgConfig)
 include(cmake/config.cmake)
 include(cmake/CPM.cmake)
@@ -64,6 +66,13 @@ if(TRACY_ENABLE)
     add_compile_options(-g -O3 -fno-omit-frame-pointer)
 endif()
 
+if(MARCH_NATIVE)
+    check_compiler_flag(CXX "-march=native" HAS_MARCH_NATIVE)
+    if(HAS_MARCH_NATIVE)
+        add_compile_options(-march=native)
+    endif()
+endif()
+
 # mcoreutil
 
 set(MCOREUTIL_SRC
@@ -74,14 +83,20 @@ set(MCOREUTIL_SRC
     src/util/FileBuffer.cpp
     src/util/Home.cpp
     src/util/Logs.cpp
+    src/util/TaskDispatch.cpp
+    src/util/Tonemapper.cpp
     src/util/stb_image_resize_impl.cpp
 )
 
 add_library(mcoreutil ${MCOREUTIL_SRC})
 target_link_libraries(mcoreutil PRIVATE
     Tracy::TracyClient
+    ${PNG_LINK_LIBRARIES}
 )
-target_include_directories(mcoreutil PRIVATE ${stb_SOURCE_DIR})
+target_include_directories(mcoreutil PRIVATE
+    ${PNG_INCLUDE_DIRS}
+    ${stb_SOURCE_DIR}
+)
 
 # mcoreimage
 

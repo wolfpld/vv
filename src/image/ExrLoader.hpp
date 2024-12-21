@@ -9,13 +9,14 @@
 
 class Bitmap;
 class ExrStream;
+class TaskDispatch;
 
 namespace OPENEXR_IMF_INTERNAL_NAMESPACE { class RgbaInputFile; }
 
 class ExrLoader : public ImageLoader
 {
 public:
-    explicit ExrLoader( std::shared_ptr<FileWrapper> file );
+    explicit ExrLoader( std::shared_ptr<FileWrapper> file, TaskDispatch* td );
     ~ExrLoader() override;
 
     NoCopy( ExrLoader );
@@ -29,6 +30,8 @@ public:
 private:
     std::unique_ptr<ExrStream> m_stream;
     std::unique_ptr<OPENEXR_IMF_INTERNAL_NAMESPACE::RgbaInputFile> m_exr;
+
+    TaskDispatch* m_td;
 
     bool m_valid;
 };
