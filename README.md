@@ -95,3 +95,7 @@ On some terminals (e.g. Konsole), images may appear pixelated when using a high 
 ### Animation
 
 Animated images in WebP format can be played. The text-only fallback mode is driven by vv outputting images on its own. The Kitty graphics protocol allows much more sophisticated control of the animation, in which case the image will continue to play even after vv exits. Note that support for Kitty animations in terminal implementations is currently very limited.
+
+## Building
+
+By default vv is built with the `-march=native` compiler option, to enable SIMD processing. If you want to build an executable that will work on any machine you may want to turn this off with the `MARCH_NATIVE` CMake option.
