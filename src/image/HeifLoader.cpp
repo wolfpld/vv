@@ -222,12 +222,36 @@ std::unique_ptr<Bitmap> HeifLoader::Load()
         else
         {
             if( !SetupDecode( false ) ) return nullptr;
-            auto tmp = std::make_unique<BitmapHdr>( m_width, m_height );
-            LoadYCbCr( tmp->Data(), m_width * m_height, 0 );
-            ConvertYCbCrToRGB( tmp->Data(), m_width * m_height );
 
             auto bmp = std::make_unique<Bitmap>( m_width, m_height );
-            cmsDoTransform( m_transform, tmp->Data(), bmp->Data(), m_width * m_height );
+            auto out = (uint32_t*)bmp->Data();
+
+            if( m_td )
+            {
+                size_t offset = 0;
+                size_t sz = m_width * m_height;
+                while( sz > 0 )
+                {
+                    const auto chunk = std::min( sz, size_t( 16 * 1024 ) );
+                    m_td->Queue( [this, out, chunk, offset] {
+                        auto ptr = (float*)alloca( chunk * 4 * sizeof( float ) );
+                        LoadYCbCr( ptr, chunk, offset );
+                        ConvertYCbCrToRGB( ptr, chunk );
+                        cmsDoTransform( m_transform, ptr, out, chunk );
+                    } );
+                    out += chunk;
+                    sz -= chunk;
+                    offset += chunk;
+                }
+                m_td->Sync();
+            }
+            else
+            {
+                auto tmp = std::make_unique<BitmapHdr>( m_width, m_height );
+                LoadYCbCr( tmp->Data(), m_width * m_height, 0 );
+                ConvertYCbCrToRGB( tmp->Data(), m_width * m_height );
+                cmsDoTransform( m_transform, tmp->Data(), out, m_width * m_height );
+            }
 
             return bmp;
         }
@@ -373,6 +397,12 @@ bool HeifLoader::SetupDecode( bool hdr )
 
     if( bppY > 8 ) m_stride /= 2;
 
+    // H.273, 8.3, VideoFullRangeFlag is false if not present
+    if( !m_nclx || !m_nclx->full_range_flag )
+    {
+        mclog( LogLevel::Info, "HEIF: Full range flag not set, converting to full range" );
+    }
+
     m_matrix = Conversion::BT601;
     if( m_nclx )
     {
@@ -399,6 +429,23 @@ bool HeifLoader::SetupDecode( bool hdr )
             break;
         default:
             mclog( LogLevel::Error, "HEIF: Matrix coefficients %d not implemented, defaulting to BT.601", m_nclx->matrix_coefficients );
+            break;
+        }
+
+        switch( m_nclx->transfer_characteristics )
+        {
+        case heif_transfer_characteristic_unspecified:
+        case heif_transfer_characteristic_IEC_61966_2_1:
+            mclog( LogLevel::Info, "HEIF: Ignoring IEC 61966-2-1 transfer function" );
+            break;
+        case heif_transfer_characteristic_ITU_R_BT_2100_0_PQ:
+            mclog( LogLevel::Info, "HEIF: Applying PQ transfer function" );
+            break;
+        case heif_transfer_characteristic_ITU_R_BT_2100_0_HLG:
+            mclog( LogLevel::Info, "HEIF: Applying HLG transfer function" );
+            break;
+        default:
+            mclog( LogLevel::Error, "HEIF: Transfer characteristics %d not implemented", m_nclx->transfer_characteristics );
             break;
         }
     }
@@ -577,8 +624,6 @@ void HeifLoader::LoadYCbCr( float* ptr, size_t sz, size_t offset )
     // H.273, 8.3, VideoFullRangeFlag is false if not present
     if( !m_nclx || !m_nclx->full_range_flag )
     {
-        mclog( LogLevel::Info, "HEIF: Full range flag not set, converting to full range" );
-
         constexpr float scale = 255.f / 219.f;
         constexpr float offset = 16.f / 255.f;
 
@@ -664,11 +709,9 @@ void HeifLoader::ApplyTransfer( float* ptr, size_t sz )
     switch( m_nclx->transfer_characteristics )
     {
     case heif_transfer_characteristic_ITU_R_BT_2100_0_PQ:
-        //mclog( LogLevel::Info, "HEIF: Applying PQ transfer function" );
         LinearizePq( ptr, sz );
         break;
     case heif_transfer_characteristic_ITU_R_BT_2100_0_HLG:
-        //mclog( LogLevel::Info, "HEIF: Applying HLG transfer function" );
         do
         {
             const auto r = ptr[0];
@@ -686,7 +729,6 @@ void HeifLoader::ApplyTransfer( float* ptr, size_t sz )
         while( --sz );
         break;
     default:
-        mclog( LogLevel::Error, "HEIF: Transfer characteristics %d not implemented", m_nclx->transfer_characteristics );
         break;
     }
 }

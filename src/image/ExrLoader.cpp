@@ -11,6 +11,7 @@
 #include "util/FileWrapper.hpp"
 #include "util/Panic.hpp"
 #include "util/TaskDispatch.hpp"
+#include "util/Tonemapper.hpp"
 
 class ExrStream : public Imf::IStream
 {
@@ -59,7 +60,29 @@ bool ExrLoader::IsValid() const
 std::unique_ptr<Bitmap> ExrLoader::Load()
 {
     auto hdr = LoadHdr();
-    return hdr->Tonemap();
+    if( m_td )
+    {
+        auto bmp = std::make_unique<Bitmap>( hdr->Width(), hdr->Height() );
+        auto src = hdr->Data();
+        auto dst = bmp->Data();
+        size_t sz = hdr->Width() * hdr->Height();
+        while( sz > 0 )
+        {
+            const auto chunk = std::min( sz, size_t( 16 * 1024 ) );
+            m_td->Queue( [src, dst, chunk] {
+                ToneMap::PbrNeutral( (uint32_t*)dst, src, chunk );
+            } );
+            src += chunk * 4;
+            dst += chunk * 4;
+            sz -= chunk;
+        }
+        m_td->Sync();
+        return bmp;
+    }
+    else
+    {
+        return hdr->Tonemap();
+    }
 }
 
 std::unique_ptr<BitmapHdr> ExrLoader::LoadHdr()
