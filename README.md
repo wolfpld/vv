@@ -98,4 +98,11 @@ Animated images in WebP format can be played. The text-only fallback mode is dri
 
 ## Building
 
+Follow the standard CMake build process. It will create the `build/vv` executable.
+
+```
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+```
+
 By default vv is built with the `-march=native` compiler option, to enable SIMD processing. If you want to build an executable that will work on any machine you may want to turn this off with the `MARCH_NATIVE` CMake option.
