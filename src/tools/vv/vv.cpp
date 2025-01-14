@@ -351,6 +351,7 @@ int main( int argc, char** argv )
         { "noanim", no_argument, nullptr, 'A' },
         { "write", required_argument, nullptr, 'w' },
         { "help", no_argument, nullptr, OptHelp },
+	{ nullptr, 0, nullptr, 0 }, // terminator
     };
 
     enum class GfxMode
