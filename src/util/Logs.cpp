@@ -101,10 +101,12 @@ void MCoreLogMessage( LogLevel level, const char* fileName, size_t line, const c
     va_start( args, fmt );
     const auto len = strlen( fileName );
 
+#ifndef DISABLE_CALLSTACK
     // Get callstack outside of lock
     const bool printCallstack = level >= LogLevel::Error && s_logLevel <= LogLevel::Callstack;
     CallstackData stack;
     if( printCallstack ) stack.count = backtrace( stack.addr, 64 );
+#endif
 
     s_logLock.lock();
     PrintLevel( level );
@@ -121,7 +123,9 @@ void MCoreLogMessage( LogLevel level, const char* fileName, size_t line, const c
         fprintf( s_logFile, ANSI_RESET "\n" );
         fflush( s_logFile );
     }
+#ifndef DISABLE_CALLSTACK
     if( printCallstack ) PrintCallstack( stack, 1 );
+#endif
     s_logLock.unlock();
     va_end( args );
 
