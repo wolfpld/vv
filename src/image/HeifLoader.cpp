@@ -159,9 +159,10 @@ void LinearizePq( float* ptr, int sz )
 #endif
 }
 
-HeifLoader::HeifLoader( std::shared_ptr<FileWrapper> file, TaskDispatch* td )
+HeifLoader::HeifLoader( std::shared_ptr<FileWrapper> file, ToneMap::Operator tonemap, TaskDispatch* td )
     : ImageLoader( std::move( file ) )
     , m_valid( false )
+    , m_tonemap( tonemap )
     , m_ctx( nullptr )
     , m_handle( nullptr )
     , m_image( nullptr )
@@ -276,7 +277,7 @@ std::unique_ptr<Bitmap> HeifLoader::Load()
                     ConvertYCbCrToRGB( ptr, chunk );
                     if( m_transform ) cmsDoTransform( m_transform, ptr, ptr, chunk );
                     ApplyTransfer( ptr, chunk );
-                    ToneMap::PbrNeutral( out, ptr, chunk );
+                    ToneMap::Process( m_tonemap, out, ptr, chunk );
                 } );
                 out += chunk;
                 sz -= chunk;
@@ -288,7 +289,7 @@ std::unique_ptr<Bitmap> HeifLoader::Load()
         else
         {
             std::unique_ptr<BitmapHdr> hdr = LoadHdr();
-            return hdr->Tonemap();
+            return hdr->Tonemap( m_tonemap );
         }
     }
 }

@@ -38,7 +38,13 @@ void PrintHelp()
     printf( "  -g, --checkerboard           Use checkerboard background\n" );
     printf( "  -A, --noanim                 Disable animation\n" );
     printf( "  -w, --write [file.png]       Write output to file\n" );
+    printf( "  -t, --tonemap [operator]     Choose HDR tone mapping operator\n" );
     printf( "  --help                       Print this help\n" );
+    printf( "\nTone mapping operators:\n" );
+    printf( "  pbr (default)\n" );
+    printf( "  agx\n" );
+    printf( "  agx-golden\n" );
+    printf( "  agx-punchy\n" );
 }
 
 enum class ScaleMode
@@ -350,6 +356,7 @@ int main( int argc, char** argv )
         { "checkerboard", no_argument, nullptr, 'g' },
         { "noanim", no_argument, nullptr, 'A' },
         { "write", required_argument, nullptr, 'w' },
+        { "tonemap", required_argument, nullptr, 't' },
         { "help", no_argument, nullptr, OptHelp },
         {}
     };
@@ -367,9 +374,10 @@ int main( int argc, char** argv )
     int bg = -2;
     bool disableAnimation = false;
     const char* writeFn = nullptr;
+    ToneMap::Operator tonemap = ToneMap::Operator::PbrNeutral;
 
     int opt;
-    while( ( opt = getopt_long( argc, argv, "debsf6G:gAw:", longOptions, nullptr ) ) != -1 )
+    while( ( opt = getopt_long( argc, argv, "debsf6G:gAw:t:", longOptions, nullptr ) ) != -1 )
     {
         switch (opt)
         {
@@ -405,6 +413,29 @@ int main( int argc, char** argv )
             writeFn = optarg;
             gfxMode = GfxMode::WriteFile;
             break;
+        case 't':
+            if( strcmp( optarg, "pbr" ) == 0 )
+            {
+                tonemap = ToneMap::Operator::PbrNeutral;
+            }
+            else if( strcmp( optarg, "agx" ) == 0 )
+            {
+                tonemap = ToneMap::Operator::AgX;
+            }
+            else if( strcmp( optarg, "agx-golden" ) == 0 )
+            {
+                tonemap = ToneMap::Operator::AgXGolden;
+            }
+            else if( strcmp( optarg, "agx-punchy" ) == 0 )
+            {
+                tonemap = ToneMap::Operator::AgXPunchy;
+            }
+            else
+            {
+                mclog( LogLevel::Error, "Unknown tone mapping operator" );
+                return 1;
+            }
+            break;
         default:
             printf( "\n" );
             [[fallthrough]];
@@ -429,8 +460,8 @@ int main( int argc, char** argv )
     std::unique_ptr<BitmapAnim> anim;
     std::unique_ptr<VectorImage> vectorImage;
 
-    auto imageThread = std::thread( [&bitmap, &anim, &vectorImage, imageFile, disableAnimation, &td] {
-        auto loader = GetImageLoader( imageFile, &td );
+    auto imageThread = std::thread( [&bitmap, &anim, &vectorImage, imageFile, disableAnimation, &td, tonemap] {
+        auto loader = GetImageLoader( imageFile, tonemap, &td );
         if( loader )
         {
             if( !disableAnimation && loader->IsAnimated() )
@@ -448,8 +479,8 @@ int main( int argc, char** argv )
                 while( sz > 0 )
                 {
                     const auto chunk = std::min( sz, size_t( 16 * 1024 ) );
-                    td.Queue( [src, dst, chunk] {
-                        ToneMap::PbrNeutral( (uint32_t*)dst, src, chunk );
+                    td.Queue( [src, dst, chunk, tonemap] {
+                        ToneMap::Process( tonemap, (uint32_t*)dst, src, chunk );
                     } );
                     src += chunk * 4;
                     dst += chunk * 4;

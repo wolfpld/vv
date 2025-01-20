@@ -48,7 +48,7 @@ std::unique_ptr<BitmapHdr> ImageLoader::LoadHdr()
     return nullptr;
 }
 
-std::unique_ptr<ImageLoader> GetImageLoader( const char* filename, TaskDispatch* td )
+std::unique_ptr<ImageLoader> GetImageLoader( const char* filename, ToneMap::Operator tonemap, TaskDispatch* td )
 {
     ZoneScoped;
 
@@ -64,13 +64,13 @@ std::unique_ptr<ImageLoader> GetImageLoader( const char* filename, TaskDispatch*
     if( auto loader = CheckImageLoader<JpgLoader>( file ); loader ) return loader;
     if( auto loader = CheckImageLoader<JxlLoader>( file ); loader ) return loader;
     if( auto loader = CheckImageLoader<WebpLoader>( file ); loader ) return loader;
-    if( auto loader = CheckImageLoader<HeifLoader>( file, td ); loader ) return loader;
+    if( auto loader = CheckImageLoader<HeifLoader>( file, tonemap, td ); loader ) return loader;
     if( auto loader = CheckImageLoader<PvrLoader>( file ); loader ) return loader;
     if( auto loader = CheckImageLoader<DdsLoader>( file ); loader ) return loader;
     if( auto loader = CheckImageLoader<StbImageLoader>( file ); loader ) return loader;
     if( auto loader = CheckImageLoader<RawLoader>( file ); loader ) return loader;
     if( auto loader = CheckImageLoader<TiffLoader>( file ); loader ) return loader;
-    if( auto loader = CheckImageLoader<ExrLoader>( file, td ); loader ) return loader;
+    if( auto loader = CheckImageLoader<ExrLoader>( file, tonemap, td ); loader ) return loader;
     if( auto loader = CheckImageLoader<PcxLoader>( file ); loader ) return loader;
 
     mclog( LogLevel::Info, "Raster image loaders can't open %s", path.c_str() );
@@ -82,7 +82,7 @@ std::unique_ptr<Bitmap> LoadImage( const char* filename )
     ZoneScoped;
     mclog( LogLevel::Info, "Loading image %s", filename );
 
-    auto loader = GetImageLoader( filename );
+    auto loader = GetImageLoader( filename, ToneMap::Operator::PbrNeutral );
     if( loader ) return loader->Load();
     return nullptr;
 }

@@ -16,7 +16,7 @@ namespace OPENEXR_IMF_INTERNAL_NAMESPACE { class RgbaInputFile; }
 class ExrLoader : public ImageLoader
 {
 public:
-    explicit ExrLoader( std::shared_ptr<FileWrapper> file, TaskDispatch* td );
+    explicit ExrLoader( std::shared_ptr<FileWrapper> file, ToneMap::Operator tonemap, TaskDispatch* td );
     ~ExrLoader() override;
 
     NoCopy( ExrLoader );
@@ -34,4 +34,5 @@ private:
     TaskDispatch* m_td;
 
     bool m_valid;
+    ToneMap::Operator m_tonemap;
 };

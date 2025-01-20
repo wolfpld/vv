@@ -32,9 +32,10 @@ private:
     FILE* m_file;
 };
 
-ExrLoader::ExrLoader( std::shared_ptr<FileWrapper> file, TaskDispatch* td )
+ExrLoader::ExrLoader( std::shared_ptr<FileWrapper> file, ToneMap::Operator tonemap, TaskDispatch* td )
     : ImageLoader( std::move( file ) )
     , m_td( td )
+    , m_tonemap( tonemap )
 {
     try
     {
@@ -69,8 +70,8 @@ std::unique_ptr<Bitmap> ExrLoader::Load()
         while( sz > 0 )
         {
             const auto chunk = std::min( sz, size_t( 16 * 1024 ) );
-            m_td->Queue( [src, dst, chunk] {
-                ToneMap::PbrNeutral( (uint32_t*)dst, src, chunk );
+            m_td->Queue( [src, dst, chunk, tonemap = m_tonemap] {
+                ToneMap::Process( tonemap, (uint32_t*)dst, src, chunk );
             } );
             src += chunk * 4;
             dst += chunk * 4;
@@ -81,7 +82,7 @@ std::unique_ptr<Bitmap> ExrLoader::Load()
     }
     else
     {
-        return hdr->Tonemap();
+        return hdr->Tonemap( m_tonemap );
     }
 }
 

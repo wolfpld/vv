@@ -26,7 +26,7 @@ class HeifLoader : public ImageLoader
     };
 
 public:
-    explicit HeifLoader( std::shared_ptr<FileWrapper> file, TaskDispatch* td );
+    explicit HeifLoader( std::shared_ptr<FileWrapper> file, ToneMap::Operator tonemap, TaskDispatch* td );
     ~HeifLoader() override;
 
     NoCopy( HeifLoader );
@@ -49,6 +49,7 @@ private:
     void ApplyTransfer( float* ptr, size_t sz );
 
     bool m_valid;
+    ToneMap::Operator m_tonemap;
     std::unique_ptr<FileBuffer> m_buf;
 
     heif_context* m_ctx;

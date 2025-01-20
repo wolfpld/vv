@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "NoCopy.hpp"
+#include "Tonemapper.hpp"
 
 class Bitmap;
 
@@ -19,7 +20,7 @@ public:
     [[nodiscard]] float* Data() { return m_data; }
     [[nodiscard]] const float* Data() const { return m_data; }
 
-    [[nodiscard]] std::unique_ptr<Bitmap> Tonemap();
+    [[nodiscard]] std::unique_ptr<Bitmap> Tonemap( ToneMap::Operator op );
 
 private:
     uint32_t m_width;

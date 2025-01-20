@@ -85,6 +85,8 @@ set(MCOREUTIL_SRC
     src/util/Logs.cpp
     src/util/TaskDispatch.cpp
     src/util/Tonemapper.cpp
+    src/util/TonemapperAgx.cpp
+    src/util/TonemapperPbr.cpp
     src/util/stb_image_resize_impl.cpp
 )
 
