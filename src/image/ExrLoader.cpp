@@ -96,7 +96,7 @@ std::unique_ptr<BitmapHdr> ExrLoader::LoadHdr()
     std::vector<Imf::Rgba> hdr;
     hdr.resize( width * height );
 
-    m_exr->setFrameBuffer( hdr.data(), 1, width );
+    m_exr->setFrameBuffer( hdr.data() - dw.min.x - dw.min.y * width, 1, width );
     m_exr->readPixels( dw.min.y, dw.max.y );
 
     auto bmp = std::make_unique<BitmapHdr>( width, height );
