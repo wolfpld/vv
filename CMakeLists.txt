@@ -58,6 +58,8 @@ pkg_check_modules(TIFF REQUIRED libtiff-4)
 pkg_check_modules(WEBP REQUIRED libwebpdemux)
 pkg_check_modules(ZLIB REQUIRED zlib)
 
+include(FindBacktrace)
+
 include_directories(${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_CURRENT_LIST_DIR}/src)
 add_compile_definitions(DISABLE_CALLSTACK)
 
@@ -91,6 +93,7 @@ set(MCOREUTIL_SRC
 add_library(mcoreutil ${MCOREUTIL_SRC})
 target_link_libraries(mcoreutil PRIVATE
     Tracy::TracyClient
+    Backtrace::Backtrace
     ${PNG_LINK_LIBRARIES}
 )
 target_include_directories(mcoreutil PRIVATE
