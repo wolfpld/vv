@@ -214,7 +214,7 @@ std::unique_ptr<Bitmap> HeifLoader::Load()
 {
     if( !m_buf && !Open() ) return nullptr;
 
-    if( !m_nclx )
+    if( !IsHdr() )
     {
         if( !m_iccData )
         {
