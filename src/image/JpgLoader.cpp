@@ -3,9 +3,11 @@
 #include <lcms2.h>
 #include <setjmp.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "JpgLoader.hpp"
 #include "util/Bitmap.hpp"
+#include "util/Cmyk.hpp"
 #include "util/FileWrapper.hpp"
 #include "util/Panic.hpp"
 
@@ -51,7 +53,8 @@ std::unique_ptr<Bitmap> JpgLoader::Load()
     jpeg_stdio_src( &cinfo, *m_file );
     jpeg_save_markers( &cinfo, JPEG_APP0 + 2, 0xFFFF );
     jpeg_read_header( &cinfo, TRUE );
-    cinfo.out_color_space = JCS_EXT_RGBA;
+    const bool cmyk = cinfo.jpeg_color_space == JCS_CMYK || cinfo.jpeg_color_space == JCS_YCCK;
+    if( !cmyk ) cinfo.out_color_space = JCS_EXT_RGBX;
     jpeg_start_decompress( &cinfo );
 
     auto bmp = std::make_unique<Bitmap>( cinfo.output_width, cinfo.output_height );
@@ -66,7 +69,34 @@ std::unique_ptr<Bitmap> JpgLoader::Load()
         ptr += cinfo.output_width * 4;
     }
 
-    if( icc )
+    if( cmyk )
+    {
+        cmsHPROFILE profileIn;
+
+        if( icc )
+        {
+            mclog( LogLevel::Info, "ICC profile size: %u", iccSz );
+            profileIn = cmsOpenProfileFromMem( icc, iccSz );
+        }
+        else
+        {
+            mclog( LogLevel::Info, "No ICC profile found, using default" );
+            profileIn = cmsOpenProfileFromMem( CMYK::ProfileData(), CMYK::ProfileSize() );
+        }
+
+        auto profileOut = cmsCreate_sRGBProfile();
+        auto transform = cmsCreateTransform( profileIn, TYPE_CMYK_8_REV, profileOut, TYPE_RGBA_8, INTENT_PERCEPTUAL, 0 );
+
+        if( transform )
+        {
+            cmsDoTransform( transform, bmp->Data(), bmp->Data(), bmp->Width() * bmp->Height() );
+            cmsDeleteTransform( transform );
+        }
+
+        cmsCloseProfile( profileOut );
+        cmsCloseProfile( profileIn );
+    }
+    else if( icc )
     {
         mclog( LogLevel::Info, "ICC profile size: %u", iccSz );
 
@@ -87,5 +117,7 @@ std::unique_ptr<Bitmap> JpgLoader::Load()
     free( icc );
     jpeg_finish_decompress( &cinfo );
     jpeg_destroy_decompress( &cinfo );
+
+    bmp->SetAlpha( 0xFF );
     return bmp;
 }

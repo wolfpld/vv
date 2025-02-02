@@ -16,6 +16,7 @@ public:
     void Resize( uint32_t width, uint32_t height );
     void Extend( uint32_t width, uint32_t height );
     void FlipVertical();
+    void SetAlpha( uint8_t alpha );
 
     [[nodiscard]] uint32_t Width() const { return m_width; }
     [[nodiscard]] uint32_t Height() const { return m_height; }

@@ -73,13 +73,26 @@ if(MARCH_NATIVE)
     endif()
 endif()
 
+# binary_to_compressed_c
+
+add_executable(binary_to_compressed_c helpers/binary_to_compressed_c.cpp)
+
 # mcoreutil
+
+add_custom_command(
+    OUTPUT cmyk.icm.cpp
+    COMMAND binary_to_compressed_c -u32 -nocompress ${CMAKE_CURRENT_LIST_DIR}/src/util/cmyk.icm cmyk_icm > cmyk.icm.cpp
+    DEPENDS binary_to_compressed_c ${CMAKE_CURRENT_LIST_DIR}/src/util/cmyk.icm
+)
+
+add_custom_target(cmyk_icm DEPENDS cmyk.icm.cpp)
 
 set(MCOREUTIL_SRC
     src/util/Bitmap.cpp
     src/util/BitmapAnim.cpp
     src/util/BitmapHdr.cpp
     src/util/Callstack.cpp
+    src/util/Cmyk.cpp
     src/util/FileBuffer.cpp
     src/util/Home.cpp
     src/util/Logs.cpp
@@ -91,6 +104,7 @@ set(MCOREUTIL_SRC
 )
 
 add_library(mcoreutil ${MCOREUTIL_SRC})
+add_dependencies(mcoreutil cmyk_icm)
 target_link_libraries(mcoreutil PRIVATE
     Tracy::TracyClient
     ${PNG_LINK_LIBRARIES}
