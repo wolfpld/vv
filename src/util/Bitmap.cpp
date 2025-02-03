@@ -12,10 +12,11 @@
 #  include <x86intrin.h>
 #endif
 
-Bitmap::Bitmap( uint32_t width, uint32_t height )
+Bitmap::Bitmap( uint32_t width, uint32_t height, int orientation )
     : m_width( width )
     , m_height( height )
     , m_data( new uint8_t[width*height*4] )
+    , m_orientation( orientation )
 {
 }
 
@@ -80,7 +81,7 @@ void Bitmap::FlipVertical()
     auto ptr2 = m_data + ( m_height - 1 ) * m_width * 4;
     auto tmp = alloca( m_width * 4 );
 
-    for ( uint32_t y=0; y<m_height/2; y++ )
+    for( uint32_t y=0; y<m_height/2; y++ )
     {
         memcpy( tmp, ptr1, m_width * 4 );
         memcpy( ptr1, ptr2, m_width * 4 );
@@ -88,6 +89,75 @@ void Bitmap::FlipVertical()
         ptr1 += m_width * 4;
         ptr2 -= m_width * 4;
     }
+}
+
+void Bitmap::FlipHorizontal()
+{
+    auto ptr = (uint32_t*)m_data;
+
+    for( uint32_t y=0; y<m_height; y++ )
+    {
+        auto ptr1 = ptr;
+        auto ptr2 = ptr + m_width - 1;
+
+        for( uint32_t x=0; x<m_width/2; x++ )
+        {
+            std::swap( *ptr1++, *ptr2-- );
+        }
+
+        ptr += m_width;
+    }
+}
+
+void Bitmap::Rotate90()
+{
+    auto tmp = new uint8_t[m_width * m_height * 4];
+
+    auto src = (uint32_t*)m_data;
+    auto dst = (uint32_t*)tmp;
+
+    for( uint32_t y=0; y<m_height; y++ )
+    {
+        for( uint32_t x=0; x<m_width; x++ )
+        {
+            dst[x * m_height + m_height - y - 1] = src[y * m_width + x];
+        }
+    }
+
+    delete[] m_data;
+    m_data = tmp;
+    std::swap( m_width, m_height );
+}
+
+void Bitmap::Rotate180()
+{
+    auto ptr1 = (uint32_t*)m_data;
+    auto ptr2 = (uint32_t*)m_data + m_width * m_height - 1;
+
+    for( uint32_t i=0; i<m_width * m_height / 2; i++ )
+    {
+        std::swap( *ptr1++, *ptr2-- );
+    }
+}
+
+void Bitmap::Rotate270()
+{
+    auto tmp = new uint8_t[m_width * m_height * 4];
+
+    auto src = (uint32_t*)m_data;
+    auto dst = (uint32_t*)tmp;
+
+    for( uint32_t y=0; y<m_height; y++ )
+    {
+        for( uint32_t x=0; x<m_width; x++ )
+        {
+            dst[( m_width - x - 1 ) * m_height + y] = src[y * m_width + x];
+        }
+    }
+
+    delete[] m_data;
+    m_data = tmp;
+    std::swap( m_width, m_height );
 }
 
 void Bitmap::SetAlpha( uint8_t alpha )
@@ -180,6 +250,42 @@ void Bitmap::SetAlpha( uint8_t alpha )
         memset( ptr, alpha, 1 );
         ptr += 4;
     }
+}
+
+void Bitmap::NormalizeOrientation()
+{
+    if( m_orientation <= 1 ) return;
+
+    switch( m_orientation )
+    {
+    case 2:
+        FlipHorizontal();
+        break;
+    case 3:
+        Rotate180();
+        break;
+    case 4:
+        FlipVertical();
+        break;
+    case 5:
+        Rotate270();
+        FlipVertical();
+        break;
+    case 6:
+        Rotate90();
+        break;
+    case 7:
+        Rotate90();
+        FlipVertical();
+        break;
+    case 8:
+        Rotate270();
+        break;
+    default:
+        Panic( "Invalid orientation value!" );
+    }
+
+    m_orientation = 1;
 }
 
 void Bitmap::SavePng( const char* path ) const

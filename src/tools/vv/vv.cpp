@@ -78,6 +78,8 @@ void AdjustBitmap( std::unique_ptr<Bitmap>& bitmap, std::unique_ptr<BitmapAnim>&
     }
     else if( bitmap )
     {
+        bitmap->NormalizeOrientation();
+
         const auto w = bitmap->Width();
         const auto h = bitmap->Height();
 

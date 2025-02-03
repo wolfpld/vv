@@ -16,5 +16,7 @@ public:
     [[nodiscard]] std::unique_ptr<Bitmap> Load() override;
 
 private:
+    int LoadOrientation();
+
     bool m_valid;
 };

@@ -1,13 +1,14 @@
 #include <stdio.h>
 #include <jpeglib.h>
 #include <lcms2.h>
+#include <libexif/exif-data.h>
 #include <setjmp.h>
 #include <stdint.h>
-#include <string.h>
 
 #include "JpgLoader.hpp"
 #include "util/Bitmap.hpp"
 #include "util/Cmyk.hpp"
+#include "util/FileBuffer.hpp"
 #include "util/FileWrapper.hpp"
 #include "util/Panic.hpp"
 
@@ -35,6 +36,7 @@ std::unique_ptr<Bitmap> JpgLoader::Load()
     CheckPanic( m_valid, "Invalid JPEG file" );
     fseek( *m_file, 0, SEEK_SET );
 
+    const auto orientation = LoadOrientation();
     JOCTET* icc = nullptr;
 
     jpeg_decompress_struct cinfo;
@@ -57,7 +59,7 @@ std::unique_ptr<Bitmap> JpgLoader::Load()
     if( !cmyk ) cinfo.out_color_space = JCS_EXT_RGBX;
     jpeg_start_decompress( &cinfo );
 
-    auto bmp = std::make_unique<Bitmap>( cinfo.output_width, cinfo.output_height );
+    auto bmp = std::make_unique<Bitmap>( cinfo.output_width, cinfo.output_height, orientation );
     auto ptr = bmp->Data();
 
     unsigned int iccSz;
@@ -120,4 +122,25 @@ std::unique_ptr<Bitmap> JpgLoader::Load()
 
     bmp->SetAlpha( 0xFF );
     return bmp;
+}
+
+int JpgLoader::LoadOrientation()
+{
+    int orientation = 0;
+
+    FileBuffer buf( m_file );
+    auto exif = exif_data_new_from_data( (const unsigned char*)buf.data(), buf.size() );
+
+    if( exif )
+    {
+        ExifEntry* entry = exif_content_get_entry( exif->ifd[EXIF_IFD_0], EXIF_TAG_ORIENTATION );
+        if( entry )
+        {
+            orientation = exif_get_short( entry->data, exif_data_get_byte_order( exif ) );
+            mclog( LogLevel::Info, "JPEG orientation: %d", orientation );
+        }
+        exif_data_free( exif );
+    }
+
+    return orientation;
 }
