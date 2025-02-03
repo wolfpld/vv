@@ -216,7 +216,7 @@ std::unique_ptr<Bitmap> HeifLoader::Load()
 
     if( !IsHdr() )
     {
-        if( !m_iccData )
+        if( !m_transform )
         {
             return LoadNoProfile();
         }
