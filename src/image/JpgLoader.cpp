@@ -117,7 +117,7 @@ std::unique_ptr<Bitmap> JpgLoader::Load()
             for( int i=0; i<cinfo.output_width; i++ )
             {
                 uint32_t col;
-                memcpy( &col, row + i * 3, 3 );
+                memcpy( &col, row + i * 3, 4 );
                 col |= 0xFF000000;
                 memcpy( ptr, &col, 4 );
                 ptr += 4;
