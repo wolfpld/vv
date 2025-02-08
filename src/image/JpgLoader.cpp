@@ -4,6 +4,7 @@
 #include <libexif/exif-data.h>
 #include <setjmp.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "JpgLoader.hpp"
 #include "util/Bitmap.hpp"
@@ -31,6 +32,36 @@ struct JpgErrorMgr
     jmp_buf setjmp_buffer;
 };
 
+namespace
+{
+bool HasColorspaceExtensions()
+{
+#ifdef JCS_EXTENSIONS
+    jpeg_compress_struct cinfo;
+    JpgErrorMgr jerr;
+
+    cinfo.err = jpeg_std_error( &jerr.pub );
+
+    if( setjmp( jerr.setjmp_buffer ) )
+    {
+        jpeg_destroy_compress( &cinfo );
+        return false;
+    }
+
+    jpeg_create_compress( &cinfo );
+    cinfo.input_components = 3;
+    jpeg_set_defaults( &cinfo );
+    cinfo.in_color_space = JCS_EXT_RGB;
+    jpeg_default_colorspace( &cinfo );
+    jpeg_destroy_compress( &cinfo );
+
+    return true;
+#else
+    return false;
+#endif
+}
+}
+
 std::unique_ptr<Bitmap> JpgLoader::Load()
 {
     CheckPanic( m_valid, "Invalid JPEG file" );
@@ -38,6 +69,8 @@ std::unique_ptr<Bitmap> JpgLoader::Load()
 
     const auto orientation = LoadOrientation();
     JOCTET* icc = nullptr;
+
+    const bool extensions = HasColorspaceExtensions();
 
     jpeg_decompress_struct cinfo;
     JpgErrorMgr jerr;
@@ -56,7 +89,9 @@ std::unique_ptr<Bitmap> JpgLoader::Load()
     jpeg_save_markers( &cinfo, JPEG_APP0 + 2, 0xFFFF );
     jpeg_read_header( &cinfo, TRUE );
     const bool cmyk = cinfo.jpeg_color_space == JCS_CMYK || cinfo.jpeg_color_space == JCS_YCCK;
-    if( !cmyk ) cinfo.out_color_space = JCS_EXT_RGBX;
+#ifdef JCS_EXTENSIONS
+    if( extensions && !cmyk ) cinfo.out_color_space = JCS_EXT_RGBX;
+#endif
     jpeg_start_decompress( &cinfo );
 
     auto bmp = std::make_unique<Bitmap>( cinfo.output_width, cinfo.output_height, orientation );
@@ -65,10 +100,30 @@ std::unique_ptr<Bitmap> JpgLoader::Load()
     unsigned int iccSz;
     jpeg_read_icc_profile( &cinfo, &icc, &iccSz );
 
-    while( cinfo.output_scanline < cinfo.output_height )
+    if( cmyk || extensions )
     {
-        jpeg_read_scanlines( &cinfo, &ptr, 1 );
-        ptr += cinfo.output_width * 4;
+        while( cinfo.output_scanline < cinfo.output_height )
+        {
+            jpeg_read_scanlines( &cinfo, &ptr, 1 );
+            ptr += cinfo.output_width * 4;
+        }
+    }
+    else
+    {
+        auto row = new uint8_t[cinfo.output_width * 3 + 1];
+        while( cinfo.output_scanline < cinfo.output_height )
+        {
+            jpeg_read_scanlines( &cinfo, &row, 1 );
+            for( int i=0; i<cinfo.output_width; i++ )
+            {
+                uint32_t col;
+                memcpy( &col, row + i * 3, 3 );
+                col |= 0xFF000000;
+                memcpy( ptr, &col, 4 );
+                ptr += 4;
+            }
+        }
+        delete[] row;
     }
 
     if( cmyk )
