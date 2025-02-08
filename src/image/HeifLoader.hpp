@@ -38,15 +38,15 @@ public:
     [[nodiscard]] std::unique_ptr<BitmapHdr> LoadHdr() override;
 
 private:
-    bool Open();
+    [[nodiscard]] bool Open();
 
-    bool SetupDecode( bool hdr );
+    [[nodiscard]] bool SetupDecode( bool hdr );
 
-    [[nodiscard]] std::unique_ptr<Bitmap> LoadNoProfile();
     void LoadYCbCr( float* ptr, size_t sz, size_t offset );
-
     void ConvertYCbCrToRGB( float* ptr, size_t sz );
-    void ApplyTransfer( float* ptr, size_t sz );
+    void ApplyTransfer( float* ptr, size_t sz, size_t offset );
+
+    [[nodiscard]] bool GetGainMapHeadroom( heif_image_handle* handle );
 
     bool m_valid;
     ToneMap::Operator m_tonemap;
@@ -54,17 +54,21 @@ private:
 
     heif_context* m_ctx;
     heif_image_handle* m_handle;
+    heif_image_handle* m_handleGainMap;
     heif_image* m_image;
     heif_color_profile_nclx* m_nclx;
 
     int m_width, m_height;
     int m_stride, m_bpp;
     float m_bppDiv;
+    float m_gainMapHeadroom;
 
     Conversion m_matrix;
 
     size_t m_iccSize;
     char* m_iccData;
+
+    float* m_gainMap;
 
     const uint8_t* m_planeY;
     const uint8_t* m_planeCb;

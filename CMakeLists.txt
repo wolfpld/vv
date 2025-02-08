@@ -52,6 +52,7 @@ pkg_check_modules(JPEG REQUIRED libjpeg)
 pkg_check_modules(JXL REQUIRED libjxl libjxl_threads)
 pkg_check_modules(LCMS REQUIRED lcms2)
 pkg_check_modules(PNG REQUIRED libpng)
+pkg_check_modules(PUGIXML REQUIRED pugixml)
 pkg_check_modules(RAW REQUIRED libraw)
 pkg_check_modules(RSVG REQUIRED librsvg-2.0)
 pkg_check_modules(SIXEL REQUIRED libsixel)
@@ -148,6 +149,7 @@ target_link_libraries(mcoreimage PRIVATE
     ${JXL_LINK_LIBRARIES}
     ${LCMS_LINK_LIBRARIES}
     ${PNG_LINK_LIBRARIES}
+    ${PUGIXML_LINK_LIBRARIES}
     ${RAW_LINK_LIBRARIES}
     ${RSVG_LINK_LIBRARIES}
     ${TIFF_LINK_LIBRARIES}
@@ -162,6 +164,7 @@ target_include_directories(mcoreimage PRIVATE
     ${JXL_INCLUDE_DIRS}
     ${LCMS_INCLUDE_DIRS}
     ${PNG_INCLUDE_DIRS}
+    ${PUGIXML_INCLUDE_DIRS}
     ${RAW_INCLUDE_DIRS}
     ${RSVG_INCLUDE_DIRS}
     ${TIFF_INCLUDE_DIRS}

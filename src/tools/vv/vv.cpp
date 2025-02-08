@@ -463,6 +463,7 @@ int main( int argc, char** argv )
     std::unique_ptr<VectorImage> vectorImage;
 
     auto imageThread = std::thread( [&bitmap, &anim, &vectorImage, imageFile, disableAnimation, &td, tonemap] {
+        mclog( LogLevel::Info, "Loading image %s", imageFile );
         auto loader = GetImageLoader( imageFile, tonemap, &td );
         if( loader )
         {

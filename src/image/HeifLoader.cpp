@@ -2,7 +2,10 @@
 #include <cmath>
 #include <libheif/heif.h>
 #include <lcms2.h>
+#include <pugixml.hpp>
+#include <stb_image_resize2.h>
 #include <string.h>
+#include <vector>
 
 #include "HeifLoader.hpp"
 #include "util/Alloca.h"
@@ -165,8 +168,10 @@ HeifLoader::HeifLoader( std::shared_ptr<FileWrapper> file, ToneMap::Operator ton
     , m_tonemap( tonemap )
     , m_ctx( nullptr )
     , m_handle( nullptr )
+    , m_handleGainMap( nullptr )
     , m_image( nullptr )
     , m_nclx( nullptr )
+    , m_gainMap( nullptr )
     , m_iccData( nullptr )
     , m_profileIn( nullptr )
     , m_profileOut( nullptr )
@@ -187,8 +192,10 @@ HeifLoader::~HeifLoader()
     if( m_transform ) cmsDeleteTransform( m_transform );
     if( m_profileOut ) cmsCloseProfile( m_profileOut );
     if( m_profileIn ) cmsCloseProfile( m_profileIn );
-    if( m_iccData ) delete[] m_iccData;
+    delete[] m_iccData;
+    delete[] m_gainMap;
     if( m_image ) heif_image_release( m_image );
+    if( m_handleGainMap ) heif_image_handle_release( m_handleGainMap );
     if( m_handle ) heif_image_handle_release( m_handle );
     if( m_ctx ) heif_context_free( m_ctx );
 }
@@ -201,6 +208,7 @@ bool HeifLoader::IsValid() const
 bool HeifLoader::IsHdr()
 {
     if( !m_buf && !Open() ) return false;
+    if( m_handleGainMap ) return true;
     if( m_nclx )
     {
         return
@@ -214,48 +222,41 @@ std::unique_ptr<Bitmap> HeifLoader::Load()
 {
     if( !m_buf && !Open() ) return nullptr;
 
-    if( !IsHdr() )
+    if( !IsHdr() || m_handleGainMap )
     {
-        if( !m_transform )
+        if( !SetupDecode( false ) ) return nullptr;
+
+        auto bmp = std::make_unique<Bitmap>( m_width, m_height );
+        auto out = (uint32_t*)bmp->Data();
+
+        if( m_td )
         {
-            return LoadNoProfile();
+            size_t offset = 0;
+            size_t sz = m_width * m_height;
+            while( sz > 0 )
+            {
+                const auto chunk = std::min( sz, size_t( 16 * 1024 ) );
+                m_td->Queue( [this, out, chunk, offset] {
+                    auto ptr = (float*)alloca( chunk * 4 * sizeof( float ) );
+                    LoadYCbCr( ptr, chunk, offset );
+                    ConvertYCbCrToRGB( ptr, chunk );
+                    cmsDoTransform( m_transform, ptr, out, chunk );
+                } );
+                out += chunk;
+                sz -= chunk;
+                offset += chunk;
+            }
+            m_td->Sync();
         }
         else
         {
-            if( !SetupDecode( false ) ) return nullptr;
-
-            auto bmp = std::make_unique<Bitmap>( m_width, m_height );
-            auto out = (uint32_t*)bmp->Data();
-
-            if( m_td )
-            {
-                size_t offset = 0;
-                size_t sz = m_width * m_height;
-                while( sz > 0 )
-                {
-                    const auto chunk = std::min( sz, size_t( 16 * 1024 ) );
-                    m_td->Queue( [this, out, chunk, offset] {
-                        auto ptr = (float*)alloca( chunk * 4 * sizeof( float ) );
-                        LoadYCbCr( ptr, chunk, offset );
-                        ConvertYCbCrToRGB( ptr, chunk );
-                        cmsDoTransform( m_transform, ptr, out, chunk );
-                    } );
-                    out += chunk;
-                    sz -= chunk;
-                    offset += chunk;
-                }
-                m_td->Sync();
-            }
-            else
-            {
-                auto tmp = std::make_unique<BitmapHdr>( m_width, m_height );
-                LoadYCbCr( tmp->Data(), m_width * m_height, 0 );
-                ConvertYCbCrToRGB( tmp->Data(), m_width * m_height );
-                cmsDoTransform( m_transform, tmp->Data(), out, m_width * m_height );
-            }
-
-            return bmp;
+            auto tmp = std::make_unique<BitmapHdr>( m_width, m_height );
+            LoadYCbCr( tmp->Data(), m_width * m_height, 0 );
+            ConvertYCbCrToRGB( tmp->Data(), m_width * m_height );
+            cmsDoTransform( m_transform, tmp->Data(), out, m_width * m_height );
         }
+
+        return bmp;
     }
     else
     {
@@ -276,7 +277,7 @@ std::unique_ptr<Bitmap> HeifLoader::Load()
                     LoadYCbCr( ptr, chunk, offset );
                     ConvertYCbCrToRGB( ptr, chunk );
                     if( m_transform ) cmsDoTransform( m_transform, ptr, ptr, chunk );
-                    ApplyTransfer( ptr, chunk );
+                    ApplyTransfer( ptr, chunk, offset );
                     ToneMap::Process( m_tonemap, out, ptr, chunk );
                 } );
                 out += chunk;
@@ -312,7 +313,7 @@ std::unique_ptr<BitmapHdr> HeifLoader::LoadHdr()
                 LoadYCbCr( ptr, chunk, offset );
                 ConvertYCbCrToRGB( ptr, chunk );
                 if( m_transform ) cmsDoTransform( m_transform, ptr, ptr, chunk );
-                ApplyTransfer( ptr, chunk );
+                ApplyTransfer( ptr, chunk, offset );
             } );
             ptr += chunk * 4;
             sz -= chunk;
@@ -325,7 +326,7 @@ std::unique_ptr<BitmapHdr> HeifLoader::LoadHdr()
         LoadYCbCr( bmp->Data(), m_width * m_height, 0 );
         ConvertYCbCrToRGB( bmp->Data(), m_width * m_height );
         if( m_transform ) cmsDoTransform( m_transform, bmp->Data(), bmp->Data(), m_width * m_height );
-        ApplyTransfer( bmp->Data(), m_width * m_height );
+        ApplyTransfer( bmp->Data(), m_width * m_height, 0 );
     }
 
     return bmp;
@@ -363,6 +364,38 @@ bool HeifLoader::Open()
     m_width = heif_image_handle_get_width( m_handle );
     m_height = heif_image_handle_get_height( m_handle );
 
+    constexpr int filter = LIBHEIF_AUX_IMAGE_FILTER_OMIT_ALPHA | LIBHEIF_AUX_IMAGE_FILTER_OMIT_DEPTH;
+    const auto auxnum = heif_image_handle_get_number_of_auxiliary_images( m_handle, filter );
+    if( auxnum > 0 )
+    {
+        std::vector<heif_item_id> aux( auxnum );
+        heif_image_handle_get_list_of_auxiliary_image_IDs( m_handle, filter, aux.data(), auxnum );
+
+        for( auto item : aux )
+        {
+            heif_image_handle* auxHandle;
+            heif_image_handle_get_auxiliary_image_handle( m_handle, item, &auxHandle );
+            const char* type;
+            heif_image_handle_get_auxiliary_type( auxHandle, &type );
+            if( strcmp( type, "urn:com:apple:photo:2020:aux:hdrgainmap" ) == 0 )
+            {
+                mclog( LogLevel::Info, "HEIF: Found gain map %s", type );
+                const auto bitDepth = heif_image_handle_get_luma_bits_per_pixel( auxHandle );
+                const auto width = heif_image_handle_get_width( auxHandle );
+                const auto height = heif_image_handle_get_height( auxHandle );
+                if( width == m_width / 2 && height == m_height / 2 && bitDepth == 8 )
+                {
+                    if( GetGainMapHeadroom( auxHandle ) ) m_handleGainMap = auxHandle;
+                    break;
+                }
+                mclog( LogLevel::Warning, "HEIF: Invalid gain map %dx%d, %d bpp", width, height, bitDepth );
+                mclog( LogLevel::Warning, "HEIF: Expected %dx%d, 8 bpp", m_width / 2, m_height / 2 );
+            }
+            heif_image_handle_release_auxiliary_type( auxHandle, &type );
+            heif_image_handle_release( auxHandle );
+        }
+    }
+
     return true;
 }
 
@@ -375,6 +408,20 @@ bool HeifLoader::SetupDecode( bool hdr )
     {
         auto err = heif_image_get_nclx_color_profile( m_image, &m_nclx );
         if( err.code == heif_error_Color_profile_does_not_exist ) mclog( LogLevel::Info, "HEIF: No image-level nclx color profile found" );
+    }
+
+    const auto imgIccSize = heif_image_get_raw_color_profile_size( m_image );
+    if( imgIccSize > 0 )
+    {
+        mclog( LogLevel::Info, "HEIF: Found image level ICC color profile" );
+        if( m_iccData )
+        {
+            mclog( LogLevel::Info, "HEIF: Multiple ICC profiles found, using image level (handle level: %zu bytes, image level: %zu bytes)", m_iccSize, imgIccSize );
+            delete[] m_iccData;
+        }
+        m_iccData = new char[imgIccSize];
+        m_iccSize = imgIccSize;
+        heif_image_get_raw_color_profile( m_image, m_iccData );
     }
 
     int strideY, strideCb, strideCr, strideA;
@@ -451,17 +498,21 @@ bool HeifLoader::SetupDecode( bool hdr )
         }
     }
 
+    cmsToneCurve* linear = cmsBuildGamma( nullptr, 1 );
+    cmsToneCurve* linear3[3] = { linear, linear, linear };
+
+    // cmsCreate_sRGBProfile() uses 2.2 gamma internally, not the proper 61966-2-1 transfer function
+    cmsToneCurve* gamma = cmsBuildGamma( nullptr, 2.2f );
+    cmsToneCurve* gamma3[3] = { gamma, gamma, gamma };
+
     if( m_iccData )
     {
         m_profileIn = cmsOpenProfileFromMem( m_iccData, m_iccSize );
         int outType;
         if( hdr )
         {
-            cmsToneCurve* linear = cmsBuildGamma( nullptr, 1 );
-            cmsToneCurve* linear3[3] = { linear, linear, linear };
             m_profileOut = cmsCreateRGBProfile( &white709, &primaries709, linear3 );
             outType = TYPE_RGBA_FLT;
-            cmsFreeToneCurve( linear );
         }
         else
         {
@@ -470,65 +521,86 @@ bool HeifLoader::SetupDecode( bool hdr )
         }
         m_transform = cmsCreateTransform( m_profileIn, TYPE_RGBA_FLT, m_profileOut, outType, INTENT_PERCEPTUAL, cmsFLAGS_COPY_ALPHA );
     }
+    else if( m_nclx )
+    {
+        const cmsCIExyY white = { m_nclx->color_primary_white_x, m_nclx->color_primary_white_y, 1 };
+        const cmsCIExyYTRIPLE primaries = {
+            { m_nclx->color_primary_red_x, m_nclx->color_primary_red_y, 1 },
+            { m_nclx->color_primary_green_x, m_nclx->color_primary_green_y, 1 },
+            { m_nclx->color_primary_blue_x, m_nclx->color_primary_blue_y, 1 }
+        };
+
+        if( hdr )
+        {
+            m_profileIn = cmsCreateRGBProfile( &white, &primaries, linear3 );
+            if( m_nclx->color_primaries != heif_color_primaries_ITU_R_BT_709_5 )
+            {
+                m_profileOut = cmsCreateRGBProfile( &white709, &primaries709, linear3 );
+                m_transform = cmsCreateTransform( m_profileIn, TYPE_RGBA_FLT, m_profileOut, TYPE_RGBA_FLT, INTENT_PERCEPTUAL, cmsFLAGS_COPY_ALPHA );
+            }
+        }
+        else
+        {
+            m_profileIn = cmsCreateRGBProfile( &white, &primaries, gamma3 );
+            m_profileOut = cmsCreate_sRGBProfile();
+            m_transform = cmsCreateTransform( m_profileIn, TYPE_RGBA_FLT, m_profileOut, TYPE_RGBA_8, INTENT_PERCEPTUAL, cmsFLAGS_COPY_ALPHA );
+        }
+    }
     else
     {
-        CheckPanic( m_nclx, "No color profile code path should be taken." );
-        CheckPanic( hdr, "No color profile code path should be taken." );
+        CheckPanic( !hdr, "Can't be HDR here" );
 
-        if( m_nclx->color_primaries != heif_color_primaries_ITU_R_BT_709_5 )
+        m_profileIn = cmsCreateRGBProfile( &white709, &primaries709, gamma3 );
+        m_profileOut = cmsCreate_sRGBProfile();
+        m_transform = cmsCreateTransform( m_profileIn, TYPE_RGBA_FLT, m_profileOut, TYPE_RGBA_8, INTENT_PERCEPTUAL, cmsFLAGS_COPY_ALPHA );
+    }
+
+    cmsFreeToneCurve( linear );
+    cmsFreeToneCurve( gamma );
+
+    if( hdr && m_handleGainMap )
+    {
+        heif_image* gainMap;
+        err = heif_decode_image( m_handleGainMap, &gainMap, heif_colorspace_monochrome, heif_chroma_monochrome, nullptr );
+        if( err.code != heif_error_Ok ) return false;
+
+        int stride;
+        auto src = heif_image_get_plane_readonly( gainMap, heif_channel_Y, &stride );
+        if( !src )
         {
-            cmsToneCurve* linear = cmsBuildGamma( nullptr, 1 );
-            cmsToneCurve* linear3[3] = { linear, linear, linear };
-
-            const cmsCIExyY white = { m_nclx->color_primary_white_x, m_nclx->color_primary_white_y, 1 };
-            const cmsCIExyYTRIPLE primaries = {
-                { m_nclx->color_primary_red_x, m_nclx->color_primary_red_y, 1 },
-                { m_nclx->color_primary_green_x, m_nclx->color_primary_green_y, 1 },
-                { m_nclx->color_primary_blue_x, m_nclx->color_primary_blue_y, 1 }
-            };
-
-            m_profileIn = cmsCreateRGBProfile( &white, &primaries, linear3 );
-            m_profileOut = cmsCreateRGBProfile( &white709, &primaries709, linear3 );
-            cmsFreeToneCurve( linear );
-            m_transform = cmsCreateTransform( m_profileIn, TYPE_RGBA_FLT, m_profileOut, TYPE_RGBA_FLT, INTENT_PERCEPTUAL, cmsFLAGS_COPY_ALPHA );
+            heif_image_release( gainMap );
+            return false;
         }
+
+        const auto w = heif_image_handle_get_width( m_handleGainMap );
+        const auto h = heif_image_handle_get_height( m_handleGainMap );
+        CheckPanic( w == m_width / 2 && h == m_height / 2, "Invalid gain map size" );
+
+        std::vector<float> tmp( w * h );
+        auto dst = tmp.data();
+        for( int i=0; i<h; i++ )
+        {
+            for( int i=0; i<w; i++ )
+            {
+                const auto v = *src++ / 255.f;
+                if( v < 0.081f )
+                {
+                    *dst++ = v / 4.5f;
+                }
+                else
+                {
+                    *dst++ = pow( ( v + 0.099f ) / 1.099f, 1.f / 0.45f );
+                }
+            }
+            src += stride - w;
+        }
+        heif_image_release( gainMap );
+
+        m_gainMap = new float[m_width * m_height];
+        stbir_resize_float_linear( tmp.data(), w, h, 0, m_gainMap, m_width, m_height, 0, STBIR_1CHANNEL );
     }
 
     return true;
-}
-
-std::unique_ptr<Bitmap> HeifLoader::LoadNoProfile()
-{
-    heif_image* img;
-    auto err = heif_decode_image( m_handle, &img, heif_colorspace_RGB, heif_chroma_interleaved_RGBA, nullptr );
-    if( err.code != heif_error_Ok ) return nullptr;
-
-    int stride;
-    auto src = heif_image_get_plane_readonly( img, heif_channel_interleaved, &stride );
-    if( !src )
-    {
-        heif_image_release( img );
-        return nullptr;
-    }
-
-    auto bmp = std::make_unique<Bitmap>( m_width, m_height );
-    if( stride == m_width * 4 )
-    {
-        memcpy( bmp->Data(), src, m_width * m_height * 4 );
-    }
-    else
-    {
-        auto dst = bmp->Data();
-        for( int i=0; i<m_height; i++ )
-        {
-            memcpy( dst, src, m_width * 4 );
-            dst += m_width * 4;
-            src += stride;
-        }
-    }
-
-    heif_image_release( img );
-    return bmp;
 }
 
 template<typename T>
@@ -703,33 +775,90 @@ void HeifLoader::ConvertYCbCrToRGB( float* ptr, size_t sz )
     }
 }
 
-void HeifLoader::ApplyTransfer( float* ptr, size_t sz )
+void HeifLoader::ApplyTransfer( float* ptr, size_t sz, size_t offset )
 {
-    CheckPanic( m_nclx, "No nclx color profile found" );
-
-    switch( m_nclx->transfer_characteristics )
+    if( m_gainMap )
     {
-    case heif_transfer_characteristic_ITU_R_BT_2100_0_PQ:
-        LinearizePq( ptr, sz );
-        break;
-    case heif_transfer_characteristic_ITU_R_BT_2100_0_HLG:
+        auto gptr = m_gainMap + offset;
         do
         {
-            const auto r = ptr[0];
-            const auto g = ptr[1];
-            const auto b = ptr[2];
-
-            const auto Y = 0.2627f * r + 0.6780f * g + 0.0593f * b;
-
-            ptr[0] = Hlg( r, Y );
-            ptr[1] = Hlg( g, Y );
-            ptr[2] = Hlg( b, Y );
-
+            const auto gain = *gptr++;
+            const auto mul = 1.f + ( m_gainMapHeadroom - 1.f ) * gain;
+            ptr[0] *= mul;
+            ptr[1] *= mul;
+            ptr[2] *= mul;
             ptr += 4;
         }
         while( --sz );
-        break;
-    default:
-        break;
     }
+    else
+    {
+        CheckPanic( m_nclx, "No nclx color profile found" );
+
+        switch( m_nclx->transfer_characteristics )
+        {
+        case heif_transfer_characteristic_ITU_R_BT_2100_0_PQ:
+            LinearizePq( ptr, sz );
+            break;
+        case heif_transfer_characteristic_ITU_R_BT_2100_0_HLG:
+            do
+            {
+                const auto r = ptr[0];
+                const auto g = ptr[1];
+                const auto b = ptr[2];
+
+                const auto Y = 0.2627f * r + 0.6780f * g + 0.0593f * b;
+
+                ptr[0] = Hlg( r, Y );
+                ptr[1] = Hlg( g, Y );
+                ptr[2] = Hlg( b, Y );
+
+                ptr += 4;
+            }
+            while( --sz );
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+bool HeifLoader::GetGainMapHeadroom( heif_image_handle* handle )
+{
+    const auto metanum = heif_image_handle_get_number_of_metadata_blocks( handle, nullptr );
+    std::vector<heif_item_id> meta( metanum );
+    heif_image_handle_get_list_of_metadata_block_IDs( handle, nullptr, meta.data(), metanum );
+
+    for( auto metaitem : meta )
+    {
+        auto metatype = heif_image_handle_get_metadata_type( handle, metaitem );
+        if( strcmp( metatype, "mime" ) == 0 )
+        {
+            const auto exifSize = heif_image_handle_get_metadata_size( handle, metaitem );
+            std::vector<uint8_t> exifData( exifSize );
+            heif_image_handle_get_metadata( handle, metaitem, exifData.data() );
+
+            pugi::xml_document doc;
+            doc.load_buffer( exifData.data(), exifSize );
+
+            const auto desc = doc.child( "x:xmpmeta" ).child( "rdf:RDF" ).child( "rdf:Description" );
+            if( desc )
+            {
+                const auto version = desc.child( "HDRGainMap:HDRGainMapVersion" );
+                if( version )
+                {
+                    const auto headroom = desc.child( "HDRGainMap:HDRGainMapHeadroom" );
+                    if( headroom )
+                    {
+                        m_gainMapHeadroom = headroom.text().as_float();
+                        mclog( LogLevel::Info, "HEIF: Gain map headroom found: %f", m_gainMapHeadroom );
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
+    mclog( LogLevel::Warning, "HEIF: No gain map headroom found" );
+    return false;
 }
