@@ -550,6 +550,7 @@ int main( int argc, char** argv )
                     if( (
                           (
                             gfxQuery.starts_with( "\033[?12;" ) ||
+                            gfxQuery.starts_with( "\033[?61;" ) ||
                             gfxQuery.starts_with( "\033[?62;" ) ||
                             gfxQuery.starts_with( "\033[?63;" ) ||
                             gfxQuery.starts_with( "\033[?64;" ) ||
@@ -558,10 +559,8 @@ int main( int argc, char** argv )
                             gfxQuery.find( ";4;" ) != std::string::npos ||
                             gfxQuery.find( ";4c" ) != std::string::npos
                           )
-#if 0
                         ) || (
                           gfxQuery == "\033[?1;2;4c"    // fucking tmux can't read the specs
-#endif
                         )
                       )
                     {
@@ -643,7 +642,7 @@ int main( int argc, char** argv )
 
         sixel_dither_t* dither;
         sixel_dither_new( &dither, -1, nullptr );
-        sixel_dither_initialize( dither, bitmap->Data(), bitmap->Width(), bitmap->Height(), SIXEL_PIXELFORMAT_RGBA8888, SIXEL_LARGE_AUTO, SIXEL_REP_AUTO, SIXEL_QUALITY_HIGHCOLOR );
+        sixel_dither_initialize( dither, bitmap->Data(), bitmap->Width(), bitmap->Height(), SIXEL_PIXELFORMAT_RGBA8888, SIXEL_LARGE_AUTO, SIXEL_REP_AUTO, SIXEL_QUALITY_FULL );
 
         sixel_output_t* output;
         sixel_output_new( &output, []( char* data, int size, void* ) -> int {
