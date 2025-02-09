@@ -631,6 +631,8 @@ int main( int argc, char** argv )
             return 1;
         }
 
+        if( bg == -2 ) bg = -1;
+
         uint32_t col = ws.ws_col * cw;
         uint32_t row = std::max<uint16_t>( 1, ws.ws_row - 1 ) * ch;
 
