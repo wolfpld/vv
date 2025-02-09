@@ -51,6 +51,7 @@ pkg_check_modules(HEIF REQUIRED libheif)
 pkg_check_modules(JPEG REQUIRED libjpeg)
 pkg_check_modules(JXL REQUIRED libjxl libjxl_threads)
 pkg_check_modules(LCMS REQUIRED lcms2)
+pkg_check_modules(LZ4 REQUIRED liblz4)
 pkg_check_modules(PNG REQUIRED libpng)
 pkg_check_modules(PUGIXML REQUIRED pugixml)
 pkg_check_modules(RAW REQUIRED libraw)
@@ -75,26 +76,27 @@ if(MARCH_NATIVE)
     endif()
 endif()
 
-# binary_to_compressed_c
+# embed
 
-add_executable(binary_to_compressed_c helpers/binary_to_compressed_c.cpp)
+add_executable(embed helpers/embed.cpp)
+target_link_libraries(embed PRIVATE ${LZ4_LINK_LIBRARIES})
+target_include_directories(embed PRIVATE ${LZ4_INCLUDE_DIRS})
+
 
 # mcoreutil
 
 add_custom_command(
-    OUTPUT cmyk.icm.cpp
-    COMMAND binary_to_compressed_c -u32 -nocompress ${CMAKE_CURRENT_LIST_DIR}/src/util/cmyk.icm cmyk_icm > cmyk.icm.cpp
-    DEPENDS binary_to_compressed_c ${CMAKE_CURRENT_LIST_DIR}/src/util/cmyk.icm
+    OUTPUT CmykIcm.cpp CmykIcm.hpp
+    COMMAND embed CmykIcm ${CMAKE_CURRENT_LIST_DIR}/src/util/cmyk.icm CmykIcm
+    DEPENDS embed ${CMAKE_CURRENT_LIST_DIR}/src/util/cmyk.icm
 )
-
-add_custom_target(cmyk_icm DEPENDS cmyk.icm.cpp)
 
 set(MCOREUTIL_SRC
     src/util/Bitmap.cpp
     src/util/BitmapAnim.cpp
     src/util/BitmapHdr.cpp
     src/util/Callstack.cpp
-    src/util/Cmyk.cpp
+    src/util/EmbedData.cpp
     src/util/FileBuffer.cpp
     src/util/Home.cpp
     src/util/Logs.cpp
@@ -103,15 +105,17 @@ set(MCOREUTIL_SRC
     src/util/TonemapperAgx.cpp
     src/util/TonemapperPbr.cpp
     src/util/stb_image_resize_impl.cpp
+    CmykIcm.cpp
 )
 
 add_library(mcoreutil ${MCOREUTIL_SRC})
-add_dependencies(mcoreutil cmyk_icm)
 target_link_libraries(mcoreutil PRIVATE
     Tracy::TracyClient
+    ${LZ4_LINK_LIBRARIES}
     ${PNG_LINK_LIBRARIES}
 )
 target_include_directories(mcoreutil PRIVATE
+    ${LZ4_INCLUDE_DIRS}
     ${PNG_INCLUDE_DIRS}
     ${stb_SOURCE_DIR}
 )
@@ -182,6 +186,7 @@ set(VV_SRC
 add_executable(vv ${VV_SRC})
 target_include_directories(vv PRIVATE
     ${SIXEL_INCLUDE_DIRS}
+    ${ZLIB_INCLUDE_DIRS}
 )
 target_link_libraries(vv PRIVATE
     mcoreutil
