@@ -158,7 +158,7 @@ void FillBackground( Bitmap& bitmap, uint32_t bg )
     }
 }
 
-void FillCheckerboard( Bitmap& bitmap )
+void FillCheckerboard( Bitmap& bitmap, uint32_t shift = 3 )
 {
     constexpr auto dist = 32;
     constexpr auto bg0 = 128 + dist;
@@ -176,7 +176,7 @@ void FillCheckerboard( Bitmap& bitmap )
 
             if( a != 255 )
             {
-                const auto sel = ( w/8 + h/8 ) & 1;
+                const auto sel = ( (w >> shift) + (h >> shift) ) & 1;
                 const auto bg = sel ? bg0 : bg1;
 
                 if( a == 0 )
@@ -210,11 +210,11 @@ void FillBackground( BitmapAnim& anim, uint32_t bg )
     }
 }
 
-void FillCheckerboard( BitmapAnim& anim )
+void FillCheckerboard( BitmapAnim& anim, uint32_t shift = 3 )
 {
     for( size_t i=0; i<anim.FrameCount(); i++ )
     {
-        FillCheckerboard( *anim.GetFrame( i ).bmp );
+        FillCheckerboard( *anim.GetFrame( i ).bmp, shift );
     }
 }
 
@@ -597,12 +597,12 @@ int main( int argc, char** argv )
         if( anim )
         {
             if( bg >= 0 ) FillBackground( *anim, bg );
-            else if( bg == -1 ) FillCheckerboard( *anim );
+            else if( bg == -1 ) FillCheckerboard( *anim, 1 );
         }
         else
         {
             if( bg >= 0 ) FillBackground( *bitmap, bg );
-            else if( bg == -1 ) FillCheckerboard( *bitmap );
+            else if( bg == -1 ) FillCheckerboard( *bitmap, 1 );
         }
 
         if( anim )
