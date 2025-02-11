@@ -194,6 +194,7 @@ HeifLoader::~HeifLoader()
     if( m_profileIn ) cmsCloseProfile( m_profileIn );
     delete[] m_iccData;
     delete[] m_gainMap;
+    if( m_nclx ) heif_nclx_color_profile_free( m_nclx );
     if( m_image ) heif_image_release( m_image );
     if( m_handleGainMap ) heif_image_handle_release( m_handleGainMap );
     if( m_handle ) heif_image_handle_release( m_handle );
@@ -377,9 +378,10 @@ bool HeifLoader::Open()
             heif_image_handle_get_auxiliary_image_handle( m_handle, item, &auxHandle );
             const char* type;
             heif_image_handle_get_auxiliary_type( auxHandle, &type );
-            if( strcmp( type, "urn:com:apple:photo:2020:aux:hdrgainmap" ) == 0 )
+            const auto match = strcmp( type, "urn:com:apple:photo:2020:aux:hdrgainmap" ) == 0;
+            heif_image_handle_release_auxiliary_type( auxHandle, &type );
+            if( match )
             {
-                mclog( LogLevel::Info, "HEIF: Found gain map %s", type );
                 const auto bitDepth = heif_image_handle_get_luma_bits_per_pixel( auxHandle );
                 const auto width = heif_image_handle_get_width( auxHandle );
                 const auto height = heif_image_handle_get_height( auxHandle );
@@ -391,7 +393,6 @@ bool HeifLoader::Open()
                 mclog( LogLevel::Warning, "HEIF: Invalid gain map %dx%d, %d bpp", width, height, bitDepth );
                 mclog( LogLevel::Warning, "HEIF: Expected %dx%d, 8 bpp", m_width / 2, m_height / 2 );
             }
-            heif_image_handle_release_auxiliary_type( auxHandle, &type );
             heif_image_handle_release( auxHandle );
         }
     }
