@@ -47,6 +47,7 @@ struct PdfLibraryLoader
 
 PdfImage::PdfImage( FileWrapper& file, const char* path )
     : m_pdf( nullptr )
+    , m_page( nullptr )
 {
     fseek( file, 0, SEEK_SET );
     uint8_t hdr[5];
