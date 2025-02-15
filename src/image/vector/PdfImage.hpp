@@ -6,7 +6,7 @@
 class PdfImage : public VectorImage
 {
 public:
-    explicit PdfImage( FileWrapper& file, const char* path );
+    explicit PdfImage( FileWrapper& file );
     ~PdfImage() override;
 
     NoCopy( PdfImage );

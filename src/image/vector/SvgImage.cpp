@@ -6,13 +6,18 @@
 
 #include "SvgImage.hpp"
 #include "util/Bitmap.hpp"
+#include "util/DataBuffer.hpp"
 #include "util/FileBuffer.hpp"
 #include "util/Logs.hpp"
 #include "util/Panic.hpp"
 
-SvgImage::SvgImage( FileWrapper& file, const char* path )
-    : m_buf( std::make_unique<FileBuffer>( file ) )
-    , m_file( g_file_new_for_path( path ) )
+SvgImage::SvgImage( FileWrapper& file )
+    : SvgImage( std::make_shared<FileBuffer>( file ) )
+{
+}
+
+SvgImage::SvgImage( std::shared_ptr<DataBuffer> buf )
+    : m_buf( std::move( buf ) )
     , m_stream( g_memory_input_stream_new_from_data( m_buf->data(), m_buf->size(), nullptr ) )
     , m_handle( rsvg_handle_new_from_stream_sync( m_stream, nullptr, RSVG_HANDLE_FLAGS_NONE, nullptr, nullptr ) )
 {
@@ -33,7 +38,6 @@ SvgImage::~SvgImage()
 {
     if( m_handle ) g_object_unref( m_handle );
     g_object_unref( m_stream );
-    g_object_unref( m_file );
 }
 
 bool SvgImage::IsValid() const

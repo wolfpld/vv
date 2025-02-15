@@ -45,7 +45,7 @@ struct PdfLibraryLoader
     };
 };
 
-PdfImage::PdfImage( FileWrapper& file, const char* path )
+PdfImage::PdfImage( FileWrapper& file )
     : m_pdf( nullptr )
     , m_page( nullptr )
 {

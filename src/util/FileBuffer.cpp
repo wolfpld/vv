@@ -7,8 +7,6 @@
 #include "util/Panic.hpp"
 
 FileBuffer::FileBuffer( const char* fn )
-    : m_buffer( nullptr )
-    , m_size( 0 )
 {
     FileWrapper file( fn, "rb" );
     if( !file )
@@ -23,7 +21,7 @@ FileBuffer::FileBuffer( const char* fn )
     m_size = ftell( file );
     fseek( file, 0, SEEK_SET );
 
-    m_buffer = (const char*)mmap( nullptr, m_size, PROT_READ, MAP_SHARED, fileno( file ), 0 );
+    m_data = (const char*)mmap( nullptr, m_size, PROT_READ, MAP_SHARED, fileno( file ), 0 );
 }
 
 FileBuffer::FileBuffer( FILE* file )
@@ -34,7 +32,7 @@ FileBuffer::FileBuffer( FILE* file )
     m_size = ftell( file );
     fseek( file, 0, SEEK_SET );
 
-    m_buffer = (const char*)mmap( nullptr, m_size, PROT_READ, MAP_SHARED, fileno( file ), 0 );
+    m_data = (const char*)mmap( nullptr, m_size, PROT_READ, MAP_SHARED, fileno( file ), 0 );
 }
 
 FileBuffer::FileBuffer( const std::shared_ptr<FileWrapper>& file )
@@ -44,5 +42,5 @@ FileBuffer::FileBuffer( const std::shared_ptr<FileWrapper>& file )
 
 FileBuffer::~FileBuffer()
 {
-    if( m_buffer ) munmap( (void*)m_buffer, m_size );
+    if( m_data ) munmap( (void*)m_data, m_size );
 }

@@ -5,16 +5,16 @@
 #include "util/FileWrapper.hpp"
 #include "util/VectorImage.hpp"
 
-class FileBuffer;
+class DataBuffer;
 
 typedef struct _GInputStream GInputStream;
 typedef struct _RsvgHandle RsvgHandle;
-typedef struct _GFile GFile;
 
 class SvgImage : public VectorImage
 {
 public:
-    explicit SvgImage( FileWrapper& file, const char* path );
+    explicit SvgImage( FileWrapper& file );
+    explicit SvgImage( std::shared_ptr<DataBuffer> buf );
     ~SvgImage() override;
 
     NoCopy( SvgImage );
@@ -27,9 +27,8 @@ public:
     [[nodiscard]] std::unique_ptr<Bitmap> Rasterize( int width, int height ) override;
 
 private:
-    std::unique_ptr<FileBuffer> m_buf;
+    std::shared_ptr<DataBuffer> m_buf;
 
-    GFile* m_file;
     GInputStream* m_stream;
     RsvgHandle* m_handle;
 
