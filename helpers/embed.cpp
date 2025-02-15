@@ -1,5 +1,5 @@
 #include <format>
-#include <lz4.h>
+#include <lz4hc.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -39,7 +39,7 @@ int main( int argc, char** argv )
 
     const auto lz4szMax = LZ4_compressBound( sz );
     auto lz4data = new uint8_t[lz4szMax];
-    const auto lz4sz = LZ4_compress_default( (const char*)data, (char*)lz4data, sz, lz4szMax );
+    const auto lz4sz = LZ4_compress_HC( (const char*)data, (char*)lz4data, sz, lz4szMax, 6 );
     delete[] data;
 
     FILE* hdr = fopen( std::format( "{}.hpp", destination ).c_str(), "wb" );
