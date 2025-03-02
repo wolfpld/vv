@@ -6,7 +6,7 @@
 #include "util/FileWrapper.hpp"
 
 TiffLoader::TiffLoader( std::shared_ptr<FileWrapper> file )
-    : ImageLoader( std::move( file ) )
+    : m_file( std::move( file ) )
     , m_tiff( nullptr )
 {
     fseek( *m_file, 0, SEEK_SET );

@@ -1,9 +1,12 @@
 #pragma once
 
+#include <memory>
+
 #include "ImageLoader.hpp"
 #include "util/NoCopy.hpp"
 
 class Bitmap;
+class FileWrapper;
 
 class JpgLoader : public ImageLoader
 {
@@ -19,4 +22,5 @@ private:
     int LoadOrientation();
 
     bool m_valid;
+    std::shared_ptr<FileWrapper> m_file;
 };

@@ -8,6 +8,7 @@
 class Bitmap;
 class BitmapHdr;
 class FileBuffer;
+class FileWrapper;
 class TaskDispatch;
 
 struct heif_context;
@@ -50,6 +51,7 @@ private:
 
     bool m_valid;
     ToneMap::Operator m_tonemap;
+    std::shared_ptr<FileWrapper> m_file;
     std::unique_ptr<FileBuffer> m_buf;
 
     heif_context* m_ctx;

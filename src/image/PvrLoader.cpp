@@ -838,7 +838,7 @@ static void DecodeRg( uint32_t* dst, const uint64_t* src, uint32_t width, uint32
 }
 
 PvrLoader::PvrLoader( std::shared_ptr<FileWrapper> file )
-    : ImageLoader( std::move( file ) )
+    : m_file( std::move( file ) )
 {
     fseek( *m_file, 0, SEEK_SET );
     uint32_t magic;

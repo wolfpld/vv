@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <stdint.h>
 
 #include "util/FileWrapper.hpp"
 #include "util/VectorImage.hpp"
@@ -24,7 +25,9 @@ public:
     [[nodiscard]] int Width() const override { return m_width; }
     [[nodiscard]] int Height() const override { return m_height; }
 
-    [[nodiscard]] std::unique_ptr<Bitmap> Rasterize( int width, int height ) override;
+    [[nodiscard]] std::unique_ptr<Bitmap> Rasterize( int width, int height ) const override;
+
+    void SetBorder( uint32_t border ) { m_border = border; }
 
 private:
     std::shared_ptr<DataBuffer> m_buf;
@@ -34,4 +37,6 @@ private:
 
     int m_width = -1;
     int m_height = -1;
+
+    uint32_t m_border = 0;
 };

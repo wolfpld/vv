@@ -1,9 +1,12 @@
 #pragma once
 
+#include <memory>
+
 #include "ImageLoader.hpp"
 #include "util/NoCopy.hpp"
 
 class Bitmap;
+class FileWrapper;
 
 class PcxLoader : public ImageLoader
 {
@@ -17,4 +20,5 @@ public:
 
 private:
     bool m_valid;
+    std::shared_ptr<FileWrapper> m_file;
 };

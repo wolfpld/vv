@@ -82,6 +82,15 @@ add_executable(embed helpers/embed.cpp)
 target_link_libraries(embed PRIVATE ${LZ4_LINK_LIBRARIES})
 target_include_directories(embed PRIVATE ${LZ4_INCLUDE_DIRS})
 
+function(Embed LIST NAME FILE)
+    add_custom_command(
+        OUTPUT data/${NAME}.cpp data/${NAME}.hpp
+        COMMAND embed ${NAME} ${CMAKE_CURRENT_LIST_DIR}/${FILE} data/${NAME}
+        DEPENDS embed ${CMAKE_CURRENT_LIST_DIR}/${FILE}
+    )
+    list(APPEND ${LIST} data/${NAME}.cpp)
+    return(PROPAGATE ${LIST})
+endfunction()
 
 # mcoreutil
 
@@ -105,8 +114,9 @@ set(MCOREUTIL_SRC
     src/util/TonemapperAgx.cpp
     src/util/TonemapperPbr.cpp
     src/util/stb_image_resize_impl.cpp
-    CmykIcm.cpp
 )
+
+Embed(MCOREUTIL_SRC CmykIcm src/util/cmyk.icm)
 
 add_library(mcoreutil ${MCOREUTIL_SRC})
 target_link_libraries(mcoreutil PRIVATE

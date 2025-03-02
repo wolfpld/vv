@@ -163,9 +163,9 @@ void LinearizePq( float* ptr, int sz )
 }
 
 HeifLoader::HeifLoader( std::shared_ptr<FileWrapper> file, ToneMap::Operator tonemap, TaskDispatch* td )
-    : ImageLoader( std::move( file ) )
-    , m_valid( false )
+    : m_valid( false )
     , m_tonemap( tonemap )
+    , m_file( std::move( file ) )
     , m_ctx( nullptr )
     , m_handle( nullptr )
     , m_handleGainMap( nullptr )

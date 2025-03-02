@@ -9,6 +9,7 @@
 
 class Bitmap;
 class ExrStream;
+class FileWrapper;
 class TaskDispatch;
 
 namespace OPENEXR_IMF_INTERNAL_NAMESPACE { class RgbaInputFile; }

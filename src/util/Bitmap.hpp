@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <stdint.h>
 
 class Bitmap
@@ -14,6 +15,7 @@ public:
     Bitmap& operator=( Bitmap&& other ) noexcept;
 
     void Resize( uint32_t width, uint32_t height );
+    [[nodiscard]] std::unique_ptr<Bitmap> ResizeNew( uint32_t width, uint32_t height ) const;
     void Extend( uint32_t width, uint32_t height );
     void SetAlpha( uint8_t alpha );
     void NormalizeOrientation();

@@ -82,7 +82,7 @@ void CmsDestroy( void* data )
 }
 
 JxlLoader::JxlLoader( std::shared_ptr<FileWrapper> file )
-    : ImageLoader( std::move( file ) )
+    : m_file( std::move( file ) )
     , m_runner( nullptr )
     , m_dec( nullptr )
 {

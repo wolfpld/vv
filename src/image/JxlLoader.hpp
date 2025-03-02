@@ -10,6 +10,7 @@
 class Bitmap;
 class BitmapHdr;
 class FileBuffer;
+class FileWrapper;
 typedef struct JxlDecoderStruct JxlDecoder;
 typedef void* cmsHPROFILE;
 typedef void* cmsHTRANSFORM;
@@ -43,6 +44,7 @@ private:
     bool Open();
 
     bool m_valid;
+    std::shared_ptr<FileWrapper> m_file;
     std::unique_ptr<FileBuffer> m_buf;
 
     void* m_runner;

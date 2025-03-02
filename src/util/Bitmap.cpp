@@ -51,6 +51,13 @@ void Bitmap::Resize( uint32_t width, uint32_t height )
     m_height = height;
 }
 
+std::unique_ptr<Bitmap> Bitmap::ResizeNew( uint32_t width, uint32_t height ) const
+{
+    auto ret = std::make_unique<Bitmap>( width, height );
+    stbir_resize_uint8_srgb( m_data, m_width, m_height, 0, ret->m_data, width, height, 0, STBIR_RGBA );
+    return ret;
+}
+
 void Bitmap::Extend( uint32_t width, uint32_t height )
 {
     CheckPanic( width >= m_width && height >= m_height, "Invalid extension" );

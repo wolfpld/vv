@@ -85,7 +85,7 @@ bool PdfImage::IsValid() const
     return m_pdf != nullptr;
 }
 
-std::unique_ptr<Bitmap> PdfImage::Rasterize( int width, int height )
+std::unique_ptr<Bitmap> PdfImage::Rasterize( int width, int height ) const
 {
     CheckPanic( m_page, "Invalid PDF image" );
 

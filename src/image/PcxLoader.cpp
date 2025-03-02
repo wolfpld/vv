@@ -10,8 +10,8 @@
 #include "util/Panic.hpp"
 
 PcxLoader::PcxLoader( std::shared_ptr<FileWrapper> file )
-    : ImageLoader( std::move( file ) )
-    , m_valid( false )
+    : m_valid( false )
+    , m_file( std::move( file ) )
 {
     fseek( *m_file, 0, SEEK_SET );
 

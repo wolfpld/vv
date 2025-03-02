@@ -6,7 +6,6 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "CmykIcm.hpp"
 #include "JpgLoader.hpp"
 #include "util/Bitmap.hpp"
 #include "util/EmbedData.hpp"
@@ -14,8 +13,10 @@
 #include "util/FileWrapper.hpp"
 #include "util/Panic.hpp"
 
+#include "data/CmykIcm.hpp"
+
 JpgLoader::JpgLoader( std::shared_ptr<FileWrapper> file )
-    : ImageLoader( std::move( file ) )
+    : m_file( std::move( file ) )
 {
     fseek( *m_file, 0, SEEK_SET );
     uint8_t hdr[2];
@@ -139,8 +140,8 @@ std::unique_ptr<Bitmap> JpgLoader::Load()
         else
         {
             mclog( LogLevel::Info, "No ICC profile found, using default" );
-            EmbedData cmyk( Embed::CmykIcmSize, Embed::CmykIcmLz4Size, Embed::CmykIcmData );
-            profileIn = cmsOpenProfileFromMem( cmyk.data(), cmyk.size() );
+            Unembed( CmykIcm );
+            profileIn = cmsOpenProfileFromMem( CmykIcm->data(), CmykIcm->size() );
         }
 
         auto profileOut = cmsCreate_sRGBProfile();

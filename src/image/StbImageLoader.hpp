@@ -1,9 +1,12 @@
 #pragma once
 
+#include <memory>
+
 #include "ImageLoader.hpp"
 #include "util/NoCopy.hpp"
 
 class Bitmap;
+class FileWrapper;
 
 class StbImageLoader : public ImageLoader
 {
@@ -22,4 +25,6 @@ public:
 private:
     bool m_valid;
     bool m_hdr;
+
+    std::shared_ptr<FileWrapper> m_file;
 };

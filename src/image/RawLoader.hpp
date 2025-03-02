@@ -7,12 +7,13 @@
 
 class Bitmap;
 class FileBuffer;
+class FileWrapper;
 class LibRaw;
 
 class RawLoader : public ImageLoader
 {
 public:
-    explicit RawLoader( std::shared_ptr<FileWrapper> file );
+    explicit RawLoader( const std::shared_ptr<FileWrapper>& file );
     ~RawLoader() override;
 
     NoCopy( RawLoader );

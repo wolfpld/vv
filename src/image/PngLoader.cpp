@@ -1,28 +1,34 @@
 #include <png.h>
 #include <setjmp.h>
-#include <stdio.h>
+#include <string.h>
 
 #include "PngLoader.hpp"
 #include "util/Bitmap.hpp"
+#include "util/FileBuffer.hpp"
 #include "util/FileWrapper.hpp"
 #include "util/Panic.hpp"
 
-PngLoader::PngLoader( std::shared_ptr<FileWrapper> file )
-    : ImageLoader( std::move( file ) )
+PngLoader::PngLoader( const std::shared_ptr<FileWrapper>& file )
+    : PngLoader( std::make_shared<FileBuffer>( file ) )
 {
-    fseek( *m_file, 0, SEEK_SET );
-    char hdr[8];
-    m_valid = fread( hdr, 1, 8, *m_file ) == 8 && png_sig_cmp( (png_const_bytep)hdr, 0, 8 ) == 0;
+}
+
+PngLoader::PngLoader( std::shared_ptr<DataBuffer> buf )
+{
+    if( buf->size() < 8 ) return;
+    if( png_sig_cmp( (png_const_bytep)buf->data(), 0, 8 ) != 0 ) return;
+    m_buf = std::move( buf );
+    m_offset = 8;
 }
 
 bool PngLoader::IsValid() const
 {
-    return m_valid;
+    return m_buf != nullptr;
 }
 
 std::unique_ptr<Bitmap> PngLoader::Load()
 {
-    CheckPanic( m_valid, "Invalid PNG file" );
+    CheckPanic( m_buf, "Invalid PNG file" );
 
     auto png = png_create_read_struct( PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr );
     if( !png ) return nullptr;
@@ -45,7 +51,13 @@ std::unique_ptr<Bitmap> PngLoader::Load()
         return nullptr;
     }
 
-    png_init_io( png, *m_file );
+    png_set_read_fn( png, this, []( png_structp png, png_bytep data, png_size_t length )
+    {
+        auto self = (PngLoader*)png_get_io_ptr( png );
+        if( self->m_offset + length > self->m_buf->size() ) png_error( png, "Read error" );
+        memcpy( data, self->m_buf->data() + self->m_offset, length );
+        self->m_offset += length;
+    } );
     png_set_sig_bytes( png, 8 );
 
     png_read_info( png, info );

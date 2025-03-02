@@ -8,6 +8,7 @@
 
 class Bitmap;
 class FileBuffer;
+class FileWrapper;
 
 typedef struct WebPAnimDecoder WebPAnimDecoder;
 
@@ -30,6 +31,7 @@ private:
 
     bool m_valid;
 
+    std::shared_ptr<FileWrapper> m_file;
     std::unique_ptr<FileBuffer> m_buf;
     WebPAnimDecoder* m_dec;
 };

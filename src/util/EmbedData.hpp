@@ -3,16 +3,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
-class EmbedData
+#include "util/DataBuffer.hpp"
+
+#define Unembed( name ) auto name = std::make_shared<EmbedData>( Embed::name##Size, Embed::name##Lz4Size, Embed::name##Data )
+
+class EmbedData : public DataBuffer
 {
 public:
     EmbedData( size_t size, size_t lz4Size, const uint8_t* data );
-    ~EmbedData();
-
-    size_t size() const { return m_size; }
-    const uint8_t* data() const { return m_data; }
-
-private:
-    size_t m_size;
-    uint8_t* m_data;
+    ~EmbedData() override;
 };

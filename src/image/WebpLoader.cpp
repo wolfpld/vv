@@ -9,7 +9,7 @@
 #include "util/Panic.hpp"
 
 WebpLoader::WebpLoader( std::shared_ptr<FileWrapper> file )
-    : ImageLoader( std::move( file ) )
+    : m_file( std::move( file ) )
     , m_dec( nullptr )
 {
     fseek( *m_file, 0, SEEK_SET );

@@ -16,30 +16,29 @@
 class ExrStream : public Imf::IStream
 {
 public:
-    explicit ExrStream( FILE* f )
+    explicit ExrStream( std::shared_ptr<FileWrapper>&& file )
         : Imf::IStream( "<unknown>" )
-        , m_file( f )
+        , m_file( std::move( file ) )
     {
-        fseek( m_file, 0, SEEK_SET );
+        fseek( *m_file, 0, SEEK_SET );
     }
 
     bool isMemoryMapped() const override { return false; }
-    bool read( char c[], int n ) override { fread( c, 1, n, m_file ); return !feof( m_file ); }
-    uint64_t tellg() override { return ftell( m_file ); }
-    void seekg( uint64_t pos ) override { fseek( m_file, pos, SEEK_SET ); }
+    bool read( char c[], int n ) override { fread( c, 1, n, *m_file ); return !feof( *m_file ); }
+    uint64_t tellg() override { return ftell( *m_file ); }
+    void seekg( uint64_t pos ) override { fseek( *m_file, pos, SEEK_SET ); }
 
 private:
-    FILE* m_file;
+    std::shared_ptr<FileWrapper> m_file;
 };
 
 ExrLoader::ExrLoader( std::shared_ptr<FileWrapper> file, ToneMap::Operator tonemap, TaskDispatch* td )
-    : ImageLoader( std::move( file ) )
-    , m_td( td )
+    : m_td( td )
     , m_tonemap( tonemap )
 {
     try
     {
-        m_stream = std::make_unique<ExrStream>( *m_file );
+        m_stream = std::make_unique<ExrStream>( std::move( file ) );
         m_exr = std::make_unique<Imf::RgbaInputFile>( *m_stream );
         m_valid = true;
     }

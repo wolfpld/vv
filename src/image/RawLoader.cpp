@@ -6,11 +6,10 @@
 #include "util/FileBuffer.hpp"
 #include "util/Panic.hpp"
 
-RawLoader::RawLoader( std::shared_ptr<FileWrapper> file )
-    : ImageLoader( std::move( file ) )
-    , m_raw( std::make_unique<LibRaw>() )
+RawLoader::RawLoader( const std::shared_ptr<FileWrapper>& file )
+    : m_raw( std::make_unique<LibRaw>() )
 {
-    m_buf = std::make_unique<FileBuffer>( m_file );
+    m_buf = std::make_unique<FileBuffer>( file );
     m_valid = m_raw->open_buffer( m_buf->data(), m_buf->size() ) == 0;
 }
 
