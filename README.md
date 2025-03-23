@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> This repository will not be updated anymore. Please go to <https://github.com/wolfpld/moderncore> to follow further development of vv.
+
 <div align="center">
 
 # vv - terminal image viewer
